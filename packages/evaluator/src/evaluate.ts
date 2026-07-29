@@ -124,6 +124,11 @@ function apiOperationMatch(
   return 0;
 }
 
+function isDraftReviewStatus(value: unknown): boolean {
+  const status = String(value ?? "").toLowerCase();
+  return status.startsWith("draft") || status.includes("requires_review");
+}
+
 export function buildEvaluationReport(input: {
   evaluationId: string;
   projectName: string;
@@ -148,13 +153,28 @@ export function buildEvaluationReport(input: {
   };
   const routes = allRoutes.filter(inScope);
   const requirements = allRequirements.filter(inScope);
-  const tests = nodes.filter((item) => item.kind === "TEST_CASE");
+  const reviewedRequirements = requirements.filter(
+    (item) => !isDraftReviewStatus(item.attributes?.reviewStatus)
+  );
+  const draftRequirements = requirements.filter((item) =>
+    isDraftReviewStatus(item.attributes?.reviewStatus)
+  );
+  const tests = nodes.filter(
+    (item) =>
+      item.kind === "TEST_CASE" && item.attributes?.source === "test"
+  );
+  const plannedTests = nodes.filter(
+    (item) =>
+      item.kind === "TEST_CASE" && item.attributes?.source === "test-plan"
+  );
   const symbols = nodes.filter((item) => item.kind === "CODE_SYMBOL");
   const findings: Finding[] = [];
   const edges: TraceEdge[] = [];
 
   let routeWithSpec = 0;
+  let routeWithAnySpec = 0;
   let routeWithTest = 0;
+  let routeWithTestPlan = 0;
   let routeWithImplementation = 0;
   let actionsWithApi = 0;
   const screens = nodes.filter((item) => item.kind === "SCREEN");
@@ -296,7 +316,7 @@ export function buildEvaluationReport(input: {
 
   for (const route of routes) {
     const operation = route.locator;
-    const requirementMatch = requirements
+    const requirementMatch = reviewedRequirements
       .map((requirement) => ({
         requirement,
         score: apiOperationMatch(route, requirement)
@@ -304,6 +324,7 @@ export function buildEvaluationReport(input: {
       .sort((a, b) => b.score - a.score)[0];
     if (requirementMatch && requirementMatch.score > 0) {
       routeWithSpec += 1;
+      routeWithAnySpec += 1;
       edges.push(
         makeEdge(
           "SERVED_BY",
@@ -316,16 +337,45 @@ export function buildEvaluationReport(input: {
         )
       );
     } else {
-      findings.push(
-        finding(
-          "ARF-API-001",
-          "UNVERIFIED",
-          `No API specification evidence for ${operation}`,
-          "An implemented route has no matching Postman request by method and normalized path.",
-          [route.evidence],
-          "Add or review a matching API specification request."
-        )
-      );
+      const draftMatch = draftRequirements
+        .map((requirement) => ({
+          requirement,
+          score: apiOperationMatch(route, requirement)
+        }))
+        .sort((a, b) => b.score - a.score)[0];
+      if (draftMatch && draftMatch.score > 0) {
+        routeWithAnySpec += 1;
+        edges.push(
+          makeEdge(
+            "SERVED_BY",
+            draftMatch.requirement,
+            route,
+            0.6,
+            "Draft API specification matches the implemented route and requires API-owner review"
+          )
+        );
+        findings.push(
+          finding(
+            "ARF-API-DRAFT-001",
+            "HUMAN_REVIEW_REQUIRED",
+            `Draft API specification requires review for ${operation}`,
+            "A generated Postman request closes the structural gap but is not approved specification evidence.",
+            [route.evidence, draftMatch.requirement.evidence],
+            "Review request parameters, headers, response shape, errors, and examples."
+          )
+        );
+      } else {
+        findings.push(
+          finding(
+            "ARF-API-001",
+            "UNVERIFIED",
+            `No API specification evidence for ${operation}`,
+            "An implemented route has no matching Postman request by method and normalized path.",
+            [route.evidence],
+            "Add or review a matching API specification request."
+          )
+        );
+      }
     }
 
     const implementation = symbols
@@ -386,19 +436,45 @@ export function buildEvaluationReport(input: {
         )
       );
     }
+
+    const plannedTest = plannedTests.find(
+      (candidate) => candidate.attributes?.apiOperation === route.locator
+    );
+    if (plannedTest) {
+      routeWithTestPlan += 1;
+      const reviewedPlan = !isDraftReviewStatus(
+        plannedTest.attributes?.reviewStatus
+      );
+      edges.push(
+        makeEdge(
+          "REQUIRES",
+          route,
+          plannedTest,
+          reviewedPlan ? 1 : 0.6,
+          reviewedPlan
+            ? "Reviewed test plan covers this operation"
+            : "Draft test plan covers this operation and requires team review"
+        )
+      );
+    }
   }
 
   for (const requirement of requirements) {
     const operation = String(requirement.attributes?.operation ?? requirement.name);
     if (routes.some((route) => apiOperationMatch(route, requirement) > 0)) continue;
+    const draft = isDraftReviewStatus(requirement.attributes?.reviewStatus);
     findings.push(
       finding(
-        "ARF-API-002",
-        "FAIL",
-        `Specified operation not found: ${operation}`,
-        "A Postman operation has no exact implemented route in the snapshot.",
+        draft ? "ARF-API-DRAFT-002" : "ARF-API-002",
+        draft ? "HUMAN_REVIEW_REQUIRED" : "FAIL",
+        `${draft ? "Draft specified" : "Specified"} operation not found: ${operation}`,
+        draft
+          ? "A draft Postman operation has no implemented route and requires scope review."
+          : "A Postman operation has no exact implemented route in the snapshot.",
         [requirement.evidence],
-        "Implement the route or mark the request as external/future."
+        draft
+          ? "Confirm the route or classify the draft request as external/future."
+          : "Implement the route or mark the request as external/future."
       )
     );
   }
@@ -458,10 +534,17 @@ export function buildEvaluationReport(input: {
   const coverage: CoverageMetric[] = [
     {
       id: "api-spec",
-      label: "Routes with API specification",
+      label: "Routes with reviewed API specification",
       covered: routeWithSpec,
       total: routes.length,
       percentage: percent(routeWithSpec, routes.length)
+    },
+    {
+      id: "api-spec-readiness",
+      label: "Routes with reviewed or draft API specification",
+      covered: routeWithAnySpec,
+      total: routes.length,
+      percentage: percent(routeWithAnySpec, routes.length)
     },
     {
       id: "implementation",
@@ -472,10 +555,17 @@ export function buildEvaluationReport(input: {
     },
     {
       id: "test",
-      label: "Routes linked to tests",
+      label: "Routes linked to executable tests",
       covered: routeWithTest,
       total: routes.length,
       percentage: percent(routeWithTest, routes.length)
+    },
+    {
+      id: "test-plan",
+      label: "Routes covered by a test plan",
+      covered: routeWithTestPlan,
+      total: routes.length,
+      percentage: percent(routeWithTestPlan, routes.length)
     },
     {
       id: "ui-api",

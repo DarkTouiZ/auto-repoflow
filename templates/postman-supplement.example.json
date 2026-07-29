@@ -1,0 +1,27 @@
+{
+  "info": {
+    "name": "Synthetic Draft API Supplement",
+    "description": "Mock-only request. Contract details require API-owner review.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "x-autorepoflow-review-status": "draft_generated_requires_review",
+    "x-autorepoflow-data-policy": "mock_only"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:3000",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Draft — List items",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/v1/items",
+        "description": "Parameters and response fields require review."
+      }
+    }
+  ]
+}

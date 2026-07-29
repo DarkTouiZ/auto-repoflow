@@ -1,0 +1,24 @@
+schema_version: 1
+review_status: draft_generated_requires_team_review
+privacy: synthetic_only
+data_policy: mock_only
+scope:
+  operations: 2
+  executable_tests_created: 0
+test_cases:
+  - id: list-items
+    name: Item-list integration contract
+    api_operation: GET /api/v1/items
+    level: integration
+    scenarios:
+      - populated mock result
+      - empty result
+      - invalid query input
+  - id: create-item
+    name: Item-creation integration contract
+    api_operation: POST /api/v1/items
+    level: integration
+    scenarios:
+      - valid mock payload
+      - missing required fields
+      - persistence failure does not return success

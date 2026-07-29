@@ -218,8 +218,15 @@ function extractPostman(
   postmanPaths: Map<string, string>
 ): void {
   try {
-    const parsed = JSON.parse(text) as { item?: unknown[] };
+    const parsed = JSON.parse(text) as {
+      item?: unknown[];
+      info?: Record<string, unknown>;
+    };
     if (!Array.isArray(parsed.item)) return;
+    const reviewStatus =
+      typeof parsed.info?.["x-autorepoflow-review-status"] === "string"
+        ? parsed.info["x-autorepoflow-review-status"]
+        : "existing_evidence";
     const requests: unknown[] = [];
     flattenPostman(parsed.item, requests);
     for (const raw of requests) {
@@ -249,12 +256,55 @@ function extractPostman(
           locator,
           file,
           undefined,
-          { source: "postman", method, path, operation }
+          { source: "postman", method, path, operation, reviewStatus }
         )
       );
     }
   } catch {
     // Non-Postman JSON files are intentionally ignored.
+  }
+}
+
+function extractTestPlan(
+  text: string,
+  file: SnapshotFile,
+  nodes: ArtifactNode[]
+): void {
+  if (!/(?:^|\/)test-plan\.ya?ml$/i.test(file.relativePath)) return;
+  try {
+    const document = parseYaml(text) as {
+      review_status?: string;
+      test_cases?: Array<{
+        id?: string;
+        name?: string;
+        api_operation?: string;
+        level?: string;
+        scenarios?: unknown[];
+      }>;
+    };
+    const reviewStatus = document.review_status ?? "draft";
+    for (const testCase of document.test_cases ?? []) {
+      const testId = testCase.id ?? testCase.name;
+      if (!testId || !testCase.api_operation) continue;
+      nodes.push(
+        node(
+          "TEST_CASE",
+          testCase.name ?? testId,
+          `test-plan:${testId}`,
+          file,
+          undefined,
+          {
+            source: "test-plan",
+            reviewStatus,
+            apiOperation: testCase.api_operation,
+            level: testCase.level ?? "unspecified",
+            scenarioCount: testCase.scenarios?.length ?? 0
+          }
+        )
+      );
+    }
+  } catch {
+    // Invalid test plans remain represented by their snapshot hash.
   }
 }
 
@@ -512,6 +562,7 @@ export async function extractArtifacts(
     if ([".yaml", ".yml"].includes(extension)) {
       extractWorld(text, file, nodes);
       extractDesignFlow(text, file, nodes);
+      extractTestPlan(text, file, nodes);
       extractCi(text, file, nodes);
     }
   }

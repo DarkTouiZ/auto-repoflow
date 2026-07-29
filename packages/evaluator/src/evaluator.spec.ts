@@ -238,6 +238,89 @@ describe("evidence evaluator", () => {
     ).toBe(true);
   });
 
+  it("separates draft API readiness and test plans from approved evidence", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-readiness-"));
+    const routeSource =
+      'app.get("/api/v1/items", listItems); export function listItems() {}';
+    const postman = JSON.stringify({
+      info: {
+        name: "Draft supplement",
+        "x-autorepoflow-review-status": "draft_generated_requires_review"
+      },
+      item: [
+        {
+          name: "List items",
+          request: { method: "GET", url: "{{baseUrl}}/api/v1/items" }
+        }
+      ]
+    });
+    const testPlan = [
+      "review_status: draft_generated_requires_team_review",
+      "test_cases:",
+      "  - id: list-items",
+      "    name: List items contract",
+      "    api_operation: GET /api/v1/items",
+      "    level: integration",
+      "    scenarios: [success, invalid-input]"
+    ].join("\n");
+    await writeFile(join(sandbox, "routes.ts"), routeSource);
+    await writeFile(join(sandbox, "supplement.json"), postman);
+    await writeFile(join(sandbox, "test-plan.yaml"), testPlan);
+    const files = [
+      {
+        relativePath: "routes.ts",
+        sha256: "3".repeat(64),
+        bytes: routeSource.length
+      },
+      {
+        relativePath: "supplement.json",
+        sha256: "4".repeat(64),
+        bytes: postman.length
+      },
+      {
+        relativePath: "test-plan.yaml",
+        sha256: "5".repeat(64),
+        bytes: testPlan.length
+      }
+    ];
+    const extracted = await extractArtifacts(sandbox, files);
+    const report = buildEvaluationReport({
+      evaluationId: "readiness",
+      projectName: "Draft",
+      mode: "rules",
+      manifest: {
+        schemaVersion: 1,
+        snapshotId: "snapshot",
+        createdAt: "2026-07-29T00:00:00.000Z",
+        sourceLabel: "repo",
+        sourceRootStored: false,
+        files,
+        decisions: [],
+        manifestSha256: "6".repeat(64)
+      },
+      extracted
+    });
+    expect(
+      report.coverage.find((item) => item.id === "api-spec")
+    ).toMatchObject({ covered: 0, total: 1 });
+    expect(
+      report.coverage.find((item) => item.id === "api-spec-readiness")
+    ).toMatchObject({ covered: 1, total: 1 });
+    expect(
+      report.coverage.find((item) => item.id === "test")
+    ).toMatchObject({ covered: 0, total: 1 });
+    expect(
+      report.coverage.find((item) => item.id === "test-plan")
+    ).toMatchObject({ covered: 1, total: 1 });
+    expect(
+      report.findings.some(
+        (item) =>
+          item.ruleId === "ARF-API-DRAFT-001" &&
+          item.status === "HUMAN_REVIEW_REQUIRED"
+      )
+    ).toBe(true);
+  });
+
   it("scores precision and recall against a known-gap ledger", () => {
     const report = {
       findings: [

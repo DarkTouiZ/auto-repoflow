@@ -43,6 +43,8 @@ the workflow.
 - Express router registrations and mounted prefixes
 - TypeScript symbols
 - Jest/Vitest test titles
+- reviewed or draft API-spec supplements
+- explicit operation-level test plans
 - root package quality commands
 - GitHub Actions workflow evidence
 - Auto-RepoFlow World Contract
@@ -75,6 +77,9 @@ until a second reviewer validates the ground truth.
   controller/service/repository chain.
 - Test linking uses names and metadata; command execution evidence is a separate
   next adapter.
+- Draft API requests and test plans improve readiness coverage only. They remain
+  human-review evidence and cannot satisfy approved-spec or executable-test
+  metrics.
 - The dashboard has local browser QA at desktop and 390px mobile widths; broader
   accessibility and cross-browser coverage remain future gates.
 - Ollama quality and latency remain unmeasured until a local model is running.

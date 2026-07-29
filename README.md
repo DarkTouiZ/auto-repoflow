@@ -52,6 +52,10 @@ node apps/cli/dist/main.js eval attach \
   --id <evaluation-id> \
   --file /private/local/design-flow.yaml \
   --as design-flow.yaml
+node apps/cli/dist/main.js eval attach \
+  --id <evaluation-id> \
+  --file /private/local/test-plan.yaml \
+  --as test-plan.yaml
 node apps/cli/dist/main.js eval run --id <evaluation-id> --mode rules
 node apps/cli/dist/main.js eval report --id <evaluation-id>
 node apps/cli/dist/main.js eval export-public --id <evaluation-id>
@@ -64,6 +68,10 @@ provider endpoints are rejected. The default is deterministic Mock mode.
 snapshot and records its hash. Secret filenames and directory traversal are
 rejected. Static screenshots should remain outside the snapshot; reference
 their SHA-256 hashes from a human-reviewed design-flow file instead.
+
+Draft Postman supplements and test plans are readiness evidence only. They
+produce human-review links and separate readiness metrics; they never increase
+reviewed API-spec coverage or executable-test coverage.
 
 The MileMesh repository is the public synthetic benchmark:
 
