@@ -1,0 +1,32 @@
+schema_version: 1
+world_version: 0.1.0
+identity:
+  name: Auto-RepoFlow
+  purpose: Convert requirements into evidence-backed draft pull requests.
+  promise: Local-first, identity-aware, human-controlled software change.
+  languages: [en, th]
+architecture:
+  style: ports-and-adapters
+  runtime: node-22
+  applications: [api, worker, cli, console]
+  boundaries:
+    - Domain packages do not import framework or infrastructure packages.
+    - External systems are accessed only through application ports.
+privacy:
+  default_provider_profile: local
+  forge_upload_requires_project_policy: true
+  cloud_provider_requires_signed_run_approval: true
+  raw_source_in_logs: forbidden
+ui:
+  theme: flow-control-room
+  colors:
+    background: "#101820"
+    surface: "#17232e"
+    active: "#14b8a6"
+    approval: "#f59e0b"
+    passed: "#22c55e"
+    failed: "#ef4444"
+invariants:
+  - Mock-provider runs cannot create live pull requests.
+  - A successful run stops at DRAFT_PR_CREATED.
+  - Merge and deployment capabilities are prohibited.

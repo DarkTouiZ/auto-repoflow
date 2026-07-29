@@ -1,0 +1,18 @@
+schema_version: 1
+world_version: 0.1.0
+commands:
+  - id: world-contract
+    run: npm run world:validate
+    required: true
+    evidence: command
+  - id: test
+    run: npm test
+    required: true
+    evidence: test
+  - id: build
+    run: npm run build
+    required: true
+    evidence: command
+policy:
+  missing_evidence: unverified
+  required_pass_states: [PASS, MANUAL_APPROVED]

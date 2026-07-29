@@ -1,0 +1,18 @@
+schema_version: 1
+world_version: 0.1.0
+defaults:
+  execution_network: denied
+  provider_profile: local
+  repair_attempts: 3
+protected_paths:
+  - .github/**
+  - .autorepoflow/**
+  - LICENSE
+  - "**/migrations/**"
+prohibited_actions:
+  - merge_pull_request
+  - deploy
+  - publish_package
+approvals:
+  medium_and_high_risk_plan: required
+  draft_pull_request: always_required

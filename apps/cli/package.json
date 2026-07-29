@@ -1,0 +1,13 @@
+{
+  "name": "@auto-repoflow/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "auto-repoflow": "dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js"
+  }
+}

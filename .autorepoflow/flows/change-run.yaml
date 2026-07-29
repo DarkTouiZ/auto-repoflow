@@ -1,0 +1,18 @@
+schema_version: 1
+world_version: 0.1.0
+flow: change-run
+terminal_success: DRAFT_PR_CREATED
+states:
+  - INTAKE
+  - NEEDS_CLARIFICATION
+  - IMPACT
+  - PLANNING
+  - PLAN_APPROVAL_REQUIRED
+  - IMPLEMENTING
+  - VERIFYING
+  - REPAIRING
+  - REVIEW_REQUIRED
+  - READY_FOR_PR
+  - CREATING_DRAFT_PR
+  - DRAFT_PR_CREATED
+terminal_failure_states: [FAILED, CANCELLED]

@@ -1,0 +1,29 @@
+{
+  "name": "auto-repoflow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-first, identity-aware software change automation that stops at a draft pull request.",
+  "license": "MIT",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build -w @auto-repoflow/contracts && npm run build -w @auto-repoflow/domain && npm run build -w @auto-repoflow/api && npm run build -w @auto-repoflow/worker && npm run build -w @auto-repoflow/cli && npm run build -w @auto-repoflow/console",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "doctor": "node scripts/doctor.mjs",
+    "world:validate": "node scripts/validate-world.mjs",
+    "check": "npm run world:validate && npm run test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.2.0",
+    "yaml": "^2.8.0"
+  }
+}
