@@ -411,7 +411,13 @@ export function buildEvaluationReport(input: {
     }
 
     const test = tests
-      .map((candidate) => ({ candidate, score: overlap(route.locator, candidate.name) }))
+      .map((candidate) => ({
+        candidate,
+        score:
+          candidate.attributes?.method && candidate.attributes?.path
+            ? apiOperationMatch(route, candidate)
+            : overlap(route.locator, candidate.name)
+      }))
       .sort((a, b) => b.score - a.score)[0];
     if (test && test.score > 0) {
       routeWithTest += 1;
@@ -421,7 +427,9 @@ export function buildEvaluationReport(input: {
           route,
           test.candidate,
           Math.max(0.5, test.score),
-          "Shared operation and test vocabulary"
+          test.candidate.attributes?.operation
+            ? "Exact HTTP method and normalized path from the test title"
+            : "Shared operation and test vocabulary"
         )
       );
     } else {

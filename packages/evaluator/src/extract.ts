@@ -335,14 +335,26 @@ function extractTests(
 ): void {
   const testRegex = /\b(?:it|test)\s*\(\s*["'`]([^"'`]+)["'`]/g;
   for (const match of text.matchAll(testRegex)) {
+    const title = match[1];
+    const operationMatch = title.match(
+      /^\s*(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s"'`]+)/i
+    );
+    const attributes: Record<string, string> = { source: "test" };
+    if (operationMatch) {
+      const method = operationMatch[1].toUpperCase();
+      const path = normalizeApiPath(operationMatch[2]);
+      attributes.method = method;
+      attributes.path = path;
+      attributes.operation = `${method} ${path}`;
+    }
     nodes.push(
       node(
         "TEST_CASE",
-        match[1],
-        `test:${file.relativePath}:${match[1]}`,
+        title,
+        `test:${file.relativePath}:${title}`,
         file,
         lineAt(text, match.index ?? 0),
-        { source: "test" }
+        attributes
       )
     );
   }

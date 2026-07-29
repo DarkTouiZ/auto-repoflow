@@ -185,6 +185,59 @@ describe("evidence evaluator", () => {
     ).toBe("/api/widgets/:param");
   });
 
+  it("links executable tests by exact method and normalized path", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-test-link-"));
+    const routes = [
+      'app.get("/api/widgets/:widgetId", getWidget);',
+      'app.post("/api/widgets/:widgetId", updateWidget);'
+    ].join("\n");
+    const tests = [
+      'it("GET /api/widgets/:param returns a mock widget", async () => {});'
+    ].join("\n");
+    await writeFile(join(sandbox, "routes.ts"), routes);
+    await writeFile(join(sandbox, "routes.test.ts"), tests);
+    const files = [
+      {
+        relativePath: "routes.ts",
+        sha256: "7".repeat(64),
+        bytes: routes.length
+      },
+      {
+        relativePath: "routes.test.ts",
+        sha256: "8".repeat(64),
+        bytes: tests.length
+      }
+    ];
+    const extracted = await extractArtifacts(sandbox, files);
+    const report = buildEvaluationReport({
+      evaluationId: "test-link",
+      projectName: "Mock",
+      mode: "rules",
+      manifest: {
+        schemaVersion: 1,
+        snapshotId: "snapshot",
+        createdAt: "2026-07-29T00:00:00.000Z",
+        sourceLabel: "repo",
+        sourceRootStored: false,
+        files,
+        decisions: [],
+        manifestSha256: "9".repeat(64)
+      },
+      extracted
+    });
+    expect(report.coverage.find((item) => item.id === "test")).toMatchObject({
+      covered: 1,
+      total: 2,
+      percentage: 50
+    });
+    expect(
+      report.edges.find((edge) => edge.kind === "VERIFIED_BY")?.status
+    ).toBe("PASS");
+    expect(
+      report.findings.filter((item) => item.ruleId === "ARF-TEST-001")
+    ).toHaveLength(1);
+  });
+
   it("keeps draft design links in human review", async () => {
     const sandbox = await mkdtemp(join(tmpdir(), "arf-design-"));
     const routes =
