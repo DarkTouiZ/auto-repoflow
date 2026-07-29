@@ -43,6 +43,13 @@ function overlap(left: string, right: string): number {
   return common / Math.max(a.size, b.size);
 }
 
+function normalizedScenario(value: unknown): string {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
 function finding(
   ruleId: string,
   status: Finding["status"],
@@ -167,6 +174,14 @@ export function buildEvaluationReport(input: {
     (item) =>
       item.kind === "TEST_CASE" && item.attributes?.source === "test-plan"
   );
+  const plannedScenarios = nodes.filter(
+    (item) =>
+      item.kind === "TEST_CASE" &&
+      item.attributes?.source === "test-plan-scenario" &&
+      !isDraftReviewStatus(item.attributes?.reviewStatus) &&
+      (!input.scopePrefix ||
+        String(item.attributes?.apiOperation ?? "").includes(input.scopePrefix))
+  );
   const symbols = nodes.filter((item) => item.kind === "CODE_SYMBOL");
   const findings: Finding[] = [];
   const edges: TraceEdge[] = [];
@@ -175,6 +190,7 @@ export function buildEvaluationReport(input: {
   let routeWithAnySpec = 0;
   let routeWithTest = 0;
   let routeWithTestPlan = 0;
+  let plannedScenarioWithTest = 0;
   let routeWithImplementation = 0;
   let actionsWithApi = 0;
   const screens = nodes.filter((item) => item.kind === "SCREEN");
@@ -487,6 +503,39 @@ export function buildEvaluationReport(input: {
     );
   }
 
+  for (const plannedScenario of plannedScenarios) {
+    const operation = String(plannedScenario.attributes?.apiOperation ?? "");
+    const scenario = normalizedScenario(plannedScenario.attributes?.scenario);
+    const executableTest = tests.find(
+      (candidate) =>
+        String(candidate.attributes?.operation ?? "") === operation &&
+        normalizedScenario(candidate.attributes?.scenario) === scenario
+    );
+    if (executableTest) {
+      plannedScenarioWithTest += 1;
+      edges.push(
+        makeEdge(
+          "VERIFIED_BY",
+          plannedScenario,
+          executableTest,
+          1,
+          "Exact API operation and reviewed scenario label"
+        )
+      );
+    } else {
+      findings.push(
+        finding(
+          "ARF-TEST-SCENARIO-001",
+          "UNVERIFIED",
+          `No executable test for planned scenario: ${plannedScenario.name}`,
+          "The reviewed scenario is not linked to an executable test title. Todo and skipped tests are not treated as coverage.",
+          [plannedScenario.evidence],
+          "Implement the scenario or record the external boundary that blocks it."
+        )
+      );
+    }
+  }
+
   const qualityNodes = nodes.filter((item) => item.kind === "QUALITY_CHECK");
   for (const required of ["test", "build"]) {
     if (
@@ -574,6 +623,13 @@ export function buildEvaluationReport(input: {
       covered: routeWithTestPlan,
       total: routes.length,
       percentage: percent(routeWithTestPlan, routes.length)
+    },
+    {
+      id: "test-scenario",
+      label: "Reviewed test-plan scenarios linked to executable tests",
+      covered: plannedScenarioWithTest,
+      total: plannedScenarios.length,
+      percentage: percent(plannedScenarioWithTest, plannedScenarios.length)
     },
     {
       id: "ui-api",

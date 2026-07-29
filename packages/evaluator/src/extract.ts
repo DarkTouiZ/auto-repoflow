@@ -302,6 +302,26 @@ function extractTestPlan(
           }
         )
       );
+      for (const scenarioValue of testCase.scenarios ?? []) {
+        const scenario = String(scenarioValue).trim();
+        if (!scenario) continue;
+        nodes.push(
+          node(
+            "TEST_CASE",
+            `${testCase.api_operation} [scenario: ${scenario}]`,
+            `test-plan-scenario:${testId}:${scenario}`,
+            file,
+            undefined,
+            {
+              source: "test-plan-scenario",
+              reviewStatus,
+              apiOperation: testCase.api_operation,
+              scenario,
+              level: testCase.level ?? "unspecified"
+            }
+          )
+        );
+      }
     }
   } catch {
     // Invalid test plans remain represented by their snapshot hash.
@@ -346,6 +366,10 @@ function extractTests(
       attributes.method = method;
       attributes.path = path;
       attributes.operation = `${method} ${path}`;
+    }
+    const scenarioMatch = title.match(/\[scenario:\s*([^\]]+)\]/i);
+    if (scenarioMatch) {
+      attributes.scenario = scenarioMatch[1].trim();
     }
     nodes.push(
       node(

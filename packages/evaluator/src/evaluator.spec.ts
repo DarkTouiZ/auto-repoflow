@@ -238,6 +238,70 @@ describe("evidence evaluator", () => {
     ).toHaveLength(1);
   });
 
+  it("reports reviewed scenario coverage without counting todo tests", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-scenario-link-"));
+    const routes = 'app.get("/api/widgets", getWidgets);';
+    const plan = [
+      "review_status: human_reviewed",
+      "test_cases:",
+      "  - id: widgets",
+      "    name: Widget scenarios",
+      "    api_operation: GET /api/widgets",
+      "    scenarios:",
+      "      - populated mock result",
+      "      - permission behavior requires confirmation"
+    ].join("\n");
+    const tests = [
+      'it("GET /api/widgets [scenario: populated mock result]", async () => {});',
+      'it.todo("GET /api/widgets [scenario: permission behavior requires confirmation]");'
+    ].join("\n");
+    await writeFile(join(sandbox, "routes.ts"), routes);
+    await writeFile(join(sandbox, "test-plan.yaml"), plan);
+    await writeFile(join(sandbox, "routes.test.ts"), tests);
+    const files = [
+      {
+        relativePath: "routes.ts",
+        sha256: "a".repeat(64),
+        bytes: routes.length
+      },
+      {
+        relativePath: "test-plan.yaml",
+        sha256: "b".repeat(64),
+        bytes: plan.length
+      },
+      {
+        relativePath: "routes.test.ts",
+        sha256: "c".repeat(64),
+        bytes: tests.length
+      }
+    ];
+    const extracted = await extractArtifacts(sandbox, files);
+    const report = buildEvaluationReport({
+      evaluationId: "scenario-link",
+      projectName: "Mock",
+      mode: "rules",
+      manifest: {
+        schemaVersion: 1,
+        snapshotId: "snapshot",
+        createdAt: "2026-07-29T00:00:00.000Z",
+        sourceLabel: "repo",
+        sourceRootStored: false,
+        files,
+        decisions: [],
+        manifestSha256: "d".repeat(64)
+      },
+      extracted
+    });
+    expect(
+      report.coverage.find((item) => item.id === "test-scenario")
+    ).toMatchObject({ covered: 1, total: 2, percentage: 50 });
+    expect(
+      report.findings.filter(
+        (item) => item.ruleId === "ARF-TEST-SCENARIO-001"
+      )
+    ).toHaveLength(1);
+  });
+
   it("keeps draft design links in human review", async () => {
     const sandbox = await mkdtemp(join(tmpdir(), "arf-design-"));
     const routes =
