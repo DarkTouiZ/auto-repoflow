@@ -1,0 +1,16 @@
+{
+  "name": "@auto-repoflow/evaluator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "dependencies": {
+    "@auto-repoflow/domain": "*",
+    "yaml": "^2.8.0",
+    "zod": "^3.25.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

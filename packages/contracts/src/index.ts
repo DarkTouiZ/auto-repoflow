@@ -21,3 +21,20 @@ export const healthResponseSchema = z.object({
   status: z.literal("ok"),
   version: z.string()
 });
+
+export const evaluationModeSchema = z.enum(["rules", "local-ai"]);
+
+export const createEvaluationSchema = z.object({
+  projectName: z.string().min(1).max(80),
+  sourcePath: z.string().min(1),
+  designFlowPath: z.string().min(1).optional(),
+  mode: evaluationModeSchema.default("rules")
+});
+
+export const runEvaluationSchema = z.object({
+  mode: evaluationModeSchema.default("rules"),
+  scopePrefix: z.string().min(1).optional()
+});
+
+export type CreateEvaluationInput = z.infer<typeof createEvaluationSchema>;
+export type RunEvaluationInput = z.infer<typeof runEvaluationSchema>;

@@ -9,6 +9,9 @@ export default defineConfig({
       ),
       "@auto-repoflow/domain": fileURLToPath(
         new URL("./packages/domain/src/index.ts", import.meta.url)
+      ),
+      "@auto-repoflow/evaluator": fileURLToPath(
+        new URL("./packages/evaluator/src/index.ts", import.meta.url)
       )
     }
   },

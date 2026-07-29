@@ -15,6 +15,16 @@ const checks = [
     command: ["git", "--version"]
   },
   {
+    name: "FileVault",
+    required: false,
+    command: ["fdesetup", "status"]
+  },
+  {
+    name: "Private artifact permissions",
+    required: false,
+    command: ["stat", "-f", "%Sp", `${process.env.HOME}/.autorepoflow-private`]
+  },
+  {
     name: "Docker daemon",
     required: false,
     command: ["docker", "info", "--format", "{{.ServerVersion}}"]

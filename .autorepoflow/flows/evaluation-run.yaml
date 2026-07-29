@@ -1,0 +1,17 @@
+schema_version: 1
+world_version: 0.1.0
+flow: evaluation-run
+terminal_success: REPORT_READY
+states:
+  - REGISTERED
+  - SNAPSHOTTING
+  - READY
+  - EXTRACTING
+  - LINKING
+  - VERIFYING
+  - REPORT_READY
+terminal_failure_states: [FAILED]
+invariants:
+  - EvaluationRun cannot mutate the target repository.
+  - EvaluationRun cannot create a branch or pull request.
+  - Missing evidence is UNVERIFIED, never PASS.

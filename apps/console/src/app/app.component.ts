@@ -1,31 +1,256 @@
-import { Component } from "@angular/core";
+import { CommonModule } from "@angular/common";
+import { HttpClient } from "@angular/common/http";
+import { Component, OnInit, inject, signal } from "@angular/core";
+
+interface Coverage {
+  id: string;
+  label: string;
+  covered: number;
+  total: number;
+  percentage: number;
+}
+
+interface Finding {
+  id: string;
+  ruleId: string;
+  status: "PASS" | "FAIL" | "UNVERIFIED" | "HUMAN_REVIEW_REQUIRED";
+  title: string;
+  explanation: string;
+}
+
+interface Report {
+  evaluationId: string;
+  projectName: string;
+  status: string;
+  mode: string;
+  coverage: Coverage[];
+  findings: Finding[];
+  summary: {
+    pass: number;
+    fail: number;
+    unverified: number;
+    humanReviewRequired: number;
+  };
+  privacy: {
+    includedFiles: number;
+    excludedFiles: number;
+    sourceRootStored: boolean;
+    publicExportSafe: boolean;
+  };
+}
+
+const benchmarkReport: Report = {
+  evaluationId: "synthetic-demo",
+  projectName: "MileMesh Synthetic Benchmark",
+  status: "REPORT_READY",
+  mode: "rules",
+  coverage: [
+    {
+      id: "api-spec",
+      label: "API specification",
+      covered: 9,
+      total: 11,
+      percentage: 81.8
+    },
+    {
+      id: "implementation",
+      label: "Implementation",
+      covered: 11,
+      total: 11,
+      percentage: 100
+    },
+    {
+      id: "test",
+      label: "Test evidence",
+      covered: 1,
+      total: 11,
+      percentage: 9.1
+    },
+    {
+      id: "ui-api",
+      label: "UI → API",
+      covered: 10,
+      total: 10,
+      percentage: 100
+    }
+  ],
+  findings: [
+    {
+      id: "f-1",
+      ruleId: "ARF-TEST-001",
+      status: "UNVERIFIED",
+      title: "10 operations have no linked test evidence",
+      explanation: "Missing evidence remains unverified; it is never inferred as a pass."
+    },
+    {
+      id: "f-2",
+      ruleId: "ARF-API-002",
+      status: "FAIL",
+      title: "2 specified operations are not implemented",
+      explanation: "The synthetic Postman collection contains two deliberate benchmark gaps."
+    },
+    {
+      id: "f-3",
+      ruleId: "ARF-DATA-001",
+      status: "UNVERIFIED",
+      title: "2 response-to-screen mappings are absent",
+      explanation: "Visible values still need reviewed response-field evidence."
+    }
+  ],
+  summary: {
+    pass: 31,
+    fail: 2,
+    unverified: 20,
+    humanReviewRequired: 0
+  },
+  privacy: {
+    includedFiles: 37,
+    excludedFiles: 7,
+    sourceRootStored: false,
+    publicExportSafe: true
+  }
+};
 
 @Component({
   selector: "arf-root",
   standalone: true,
+  imports: [CommonModule],
   template: `
-    <main class="shell">
-      <header>
-        <p class="eyebrow">LOCAL CONTROL PLANE</p>
-        <h1>Auto-RepoFlow</h1>
-        <p class="lede">
-          Identity-aware changes, evidence-backed review, and a hard stop at
-          draft pull request.
-        </p>
-      </header>
+    <div class="app-shell">
+      <aside>
+        <div class="brand"><span>AR</span><strong>Auto-RepoFlow</strong></div>
+        <nav>
+          <a class="active" href="#overview">Evaluation</a>
+          <a href="#coverage">Coverage</a>
+          <a href="#traceability">Trace graph</a>
+          <a href="#findings">Findings</a>
+          <a href="#privacy">Privacy</a>
+        </nav>
+        <div class="local-badge"><i></i> LOCAL ONLY</div>
+      </aside>
 
-      <section class="flow" aria-label="Foundation workflow">
-        <div><span>01</span> Intake</div>
-        <div><span>02</span> Plan</div>
-        <div><span>03</span> Verify</div>
-        <div class="approval"><span>04</span> Approve draft PR</div>
-      </section>
+      <main>
+        <header id="overview">
+          <div>
+            <p class="eyebrow">ENGINEERING EVIDENCE AUDITOR</p>
+            <h1>{{ report().projectName }}</h1>
+            <p class="lede">
+              Requirement → Design → Data → API → Code → Tests
+            </p>
+          </div>
+          <div class="run-state">
+            <span>EvaluationRun</span>
+            <strong>{{ report().status }}</strong>
+            <small>{{ live() ? "LIVE LOCAL REPORT" : "SYNTHETIC DEMO" }}</small>
+          </div>
+        </header>
 
-      <section class="status">
-        <span class="dot"></span>
-        Foundation cycle ready for local validation
-      </section>
-    </main>
+        <section class="privacy-strip" id="privacy">
+          <span class="shield">✓</span>
+          <div>
+            <strong>Privacy boundary active</strong>
+            <small>Absolute source path is not stored · public export is identifier-free</small>
+          </div>
+          <dl>
+            <div><dt>Included</dt><dd>{{ report().privacy.includedFiles }}</dd></div>
+            <div><dt>Excluded</dt><dd>{{ report().privacy.excludedFiles }}</dd></div>
+            <div><dt>Egress</dt><dd>0</dd></div>
+          </dl>
+        </section>
+
+        <p class="notice" *ngIf="message()">{{ message() }}</p>
+
+        <section class="coverage-grid" id="coverage">
+          <article *ngFor="let metric of report().coverage">
+            <div class="metric-head">
+              <span>{{ metric.label }}</span>
+              <strong>{{ metric.percentage }}%</strong>
+            </div>
+            <div class="bar"><i [style.width.%]="metric.percentage"></i></div>
+            <small>{{ metric.covered }} / {{ metric.total }} evidence-linked</small>
+          </article>
+        </section>
+
+        <section class="panel trace-panel" id="traceability">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">TRACEABILITY MATRIX</p>
+              <h2>10 operations in scope</h2>
+            </div>
+            <span class="mode">RULES + EVIDENCE</span>
+          </div>
+          <div class="trace-flow">
+            <div><b>UI</b><span>10</span></div><i>→</i>
+            <div><b>API</b><span>11</span></div><i>→</i>
+            <div><b>CODE</b><span>11</span></div><i>→</i>
+            <div class="weak"><b>TEST</b><span>1</span></div>
+          </div>
+          <p>
+            Every link carries a file hash and locator. Missing proof stays
+            <code>UNVERIFIED</code>; AI cannot upgrade deterministic failures.
+          </p>
+        </section>
+
+        <section class="panel findings" id="findings">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">REVIEW QUEUE</p>
+              <h2>Evidence gaps</h2>
+            </div>
+            <div class="totals">
+              <span class="fail">{{ report().summary.fail }} fail</span>
+              <span>{{ report().summary.unverified }} unverified</span>
+            </div>
+          </div>
+          <article *ngFor="let finding of report().findings.slice(0, 8)">
+            <span class="status" [class.fail]="finding.status === 'FAIL'">
+              {{ finding.status }}
+            </span>
+            <div>
+              <strong>{{ finding.title }}</strong>
+              <p>{{ finding.explanation }}</p>
+            </div>
+            <code>{{ finding.ruleId }}</code>
+          </article>
+        </section>
+
+        <footer>
+          EvaluationRun stops at REPORT_READY · ChangeRun remains separately
+          hard-stopped at DRAFT_PR_CREATED
+        </footer>
+      </main>
+    </div>
   `
 })
-export class AppComponent {}
+export class AppComponent implements OnInit {
+  private readonly http = inject(HttpClient);
+  readonly report = signal<Report>(benchmarkReport);
+  readonly live = signal(false);
+  readonly message = signal("");
+
+  ngOnInit(): void {
+    const evaluationId = new URLSearchParams(window.location.search).get(
+      "evaluation"
+    );
+    if (!evaluationId) return;
+    this.message.set("Loading the local evidence report…");
+    this.http
+      .get<Report>(
+        `http://127.0.0.1:4100/api/v1/evaluations/${encodeURIComponent(
+          evaluationId
+        )}/report`
+      )
+      .subscribe({
+        next: (report) => {
+          this.report.set(report);
+          this.live.set(true);
+          this.message.set("");
+        },
+        error: () => {
+          this.message.set(
+            "Local API report was unavailable; showing the synthetic benchmark."
+          );
+        }
+      });
+  }
+}

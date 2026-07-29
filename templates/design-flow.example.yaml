@@ -1,0 +1,21 @@
+schema_version: 1
+review_status: human_reviewed
+source: synthetic_design
+screens:
+  - id: item-list
+    name: Item list
+    acceptance_criteria_required: true
+    acceptance_criteria:
+      - Loading, empty, populated, and error states are distinguishable.
+    states: [loading, empty, populated, error]
+    actions:
+      - id: load-items
+        label: Load items
+        api_operation: GET /api/v1/items
+        response_mapping_required: true
+        response_fields: [items, nextCursor]
+      - id: delete-item
+        label: Delete item
+        api_operation: DELETE /api/v1/items/:param
+        confirmation_required: true
+        permission_state_required: true

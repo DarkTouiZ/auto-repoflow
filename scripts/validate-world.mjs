@@ -5,7 +5,8 @@ const requiredFiles = [
   ".autorepoflow/world.yaml",
   ".autorepoflow/quality.yaml",
   ".autorepoflow/risk.yaml",
-  ".autorepoflow/flows/change-run.yaml"
+  ".autorepoflow/flows/change-run.yaml",
+  ".autorepoflow/flows/evaluation-run.yaml"
 ];
 
 for (const file of requiredFiles) {
