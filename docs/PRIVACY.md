@@ -24,6 +24,11 @@ The copy process rejects before copying:
 Every included file receives a SHA-256 digest. `eval validate` detects missing
 or modified snapshot files.
 
+External design evidence is opt-in through `eval attach`. The command accepts a
+safe destination filename only, rejects secret filenames and path traversal,
+and updates the immutable manifest digest. For static screenshots, attach a
+reviewed YAML file containing screenshot hashes rather than the images.
+
 Raw snapshots can be deleted per evaluation or with the seven-day retention
 command. Reports and aggregate metrics remain available after raw deletion.
 

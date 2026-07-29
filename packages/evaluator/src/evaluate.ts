@@ -77,7 +77,7 @@ function makeEdge(
     to: to.id,
     confidence,
     source: "RULE",
-    status: confidence >= 0.5 ? "PASS" : "HUMAN_REVIEW_REQUIRED",
+    status: confidence >= 0.85 ? "PASS" : "HUMAN_REVIEW_REQUIRED",
     rationale
   };
 }
@@ -159,6 +159,33 @@ export function buildEvaluationReport(input: {
   let actionsWithApi = 0;
   const screens = nodes.filter((item) => item.kind === "SCREEN");
   const states = nodes.filter((item) => item.kind === "UI_STATE");
+  const approvedReviewStatuses = new Set([
+    "human_reviewed",
+    "approved_for_synthetic_benchmark"
+  ]);
+  const draftScreens = screens.filter(
+    (screen) =>
+      !approvedReviewStatuses.has(String(screen.attributes?.reviewStatus ?? ""))
+  );
+  if (draftScreens.length > 0) {
+    findings.push(
+      finding(
+        "ARF-DESIGN-001",
+        "HUMAN_REVIEW_REQUIRED",
+        "Design-flow mapping is still a draft",
+        "UI-to-API links were inferred from static design evidence and require human approval.",
+        [
+          ...new Map(
+            draftScreens.map((screen) => [
+              screen.evidence.artifactId,
+              screen.evidence
+            ])
+          ).values()
+        ],
+        "Review each action and mark the design flow as human_reviewed."
+      )
+    );
+  }
 
   for (const screen of screens) {
     if (
@@ -188,13 +215,17 @@ export function buildEvaluationReport(input: {
       : undefined;
     if (route) {
       actionsWithApi += 1;
+      const reviewStatus = String(action.attributes?.reviewStatus ?? "");
+      const reviewed = approvedReviewStatuses.has(reviewStatus);
       edges.push(
         makeEdge(
           "TRIGGERS",
           action,
           route,
-          1,
-          "Reviewed design-flow declares the exact API operation"
+          reviewed ? 1 : 0.6,
+          reviewed
+            ? "Reviewed design-flow declares the exact API operation"
+            : "Draft design-flow declares the operation; human approval is required"
         )
       );
     } else {

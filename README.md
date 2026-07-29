@@ -48,6 +48,10 @@ node apps/cli/dist/main.js eval snapshot \
   --source /absolute/path/to/repository \
   --project Local-Pilot
 node apps/cli/dist/main.js eval validate --id <evaluation-id>
+node apps/cli/dist/main.js eval attach \
+  --id <evaluation-id> \
+  --file /private/local/design-flow.yaml \
+  --as design-flow.yaml
 node apps/cli/dist/main.js eval run --id <evaluation-id> --mode rules
 node apps/cli/dist/main.js eval report --id <evaluation-id>
 node apps/cli/dist/main.js eval export-public --id <evaluation-id>
@@ -55,6 +59,11 @@ node apps/cli/dist/main.js eval export-public --id <evaluation-id>
 
 For local semantic suggestions, set `ARF_AI_PROVIDER=ollama`; non-loopback
 provider endpoints are rejected. The default is deterministic Mock mode.
+
+`eval attach` copies only the explicitly named evidence into the private
+snapshot and records its hash. Secret filenames and directory traversal are
+rejected. Static screenshots should remain outside the snapshot; reference
+their SHA-256 hashes from a human-reviewed design-flow file instead.
 
 The MileMesh repository is the public synthetic benchmark:
 

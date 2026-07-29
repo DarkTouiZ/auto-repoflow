@@ -345,6 +345,7 @@ function extractDesignFlow(
   if (!/(?:^|\/)design-flow\.ya?ml$/i.test(file.relativePath)) return;
   try {
     const document = parseYaml(text) as {
+      review_status?: string;
       screens?: Array<{
         id?: string;
         name?: string;
@@ -362,6 +363,7 @@ function extractDesignFlow(
         acceptance_criteria?: string[];
       }>;
     };
+    const reviewStatus = document.review_status ?? "draft";
     for (const screen of document.screens ?? []) {
       const screenId = screen.id ?? screen.name;
       if (!screenId) continue;
@@ -372,7 +374,7 @@ function extractDesignFlow(
           `screen:${screenId}`,
           file,
           undefined,
-          { source: "reviewed-design-flow" }
+          { source: "reviewed-design-flow", reviewStatus }
         )
       );
       const addedScreen = nodes.at(-1);
@@ -396,6 +398,7 @@ function extractDesignFlow(
             undefined,
             {
               source: "reviewed-design-flow",
+              reviewStatus,
               screen: screenId,
               ...(action.api_operation
                 ? { apiOperation: action.api_operation }

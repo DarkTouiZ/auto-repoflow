@@ -14,6 +14,7 @@ import {
   OllamaSemanticLinkProvider,
   verifyAiSuggestions
 } from "./ai.js";
+import { EvaluationService } from "./service.js";
 
 const previousHome = process.env.HOME;
 
@@ -50,6 +51,43 @@ describe("privacy boundary", () => {
     await expect(
       readFile(join(result.snapshotDirectory, ".env"), "utf8")
     ).rejects.toThrow();
+  });
+
+  it("attaches explicit evidence by hash and rejects secret aliases", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-attach-"));
+    process.env.HOME = join(sandbox, "home");
+    const source = join(sandbox, "source");
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "app.ts"), "export const app = true;");
+    const designPath = join(sandbox, "flow.yaml");
+    await writeFile(
+      designPath,
+      "review_status: draft\nscreens: []\n"
+    );
+    const service = new EvaluationService();
+    const snapshot = await service.snapshot({
+      sourcePath: source,
+      projectName: "attach"
+    });
+    const attached = await service.attachEvidence({
+      evaluationId: snapshot.evaluationId,
+      filePath: designPath,
+      alias: "design-flow.yaml"
+    });
+    expect(attached.relativePath).toBe(
+      ".evaluation-input/design-flow.yaml"
+    );
+    await expect(
+      service.attachEvidence({
+        evaluationId: snapshot.evaluationId,
+        filePath: designPath,
+        alias: ".env"
+      })
+    ).rejects.toThrow(/safe filename|privacy policy/);
+    await expect(service.validate(snapshot.evaluationId)).resolves.toMatchObject({
+      valid: true,
+      checkedFiles: 2
+    });
   });
 });
 
@@ -145,6 +183,59 @@ describe("evidence evaluator", () => {
       extracted.nodes.find((item) => item.kind === "REQUIREMENT")?.attributes
         ?.path
     ).toBe("/api/widgets/:param");
+  });
+
+  it("keeps draft design links in human review", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-design-"));
+    const routes =
+      'app.get("/api/v1/items", listItems); export function listItems() {}';
+    const design = [
+      "review_status: draft_inferred_requires_human_review",
+      "screens:",
+      "  - id: item-list",
+      "    name: Item list",
+      "    actions:",
+      "      - id: load",
+      "        label: Load items",
+      "        api_operation: GET /api/v1/items"
+    ].join("\n");
+    await writeFile(join(sandbox, "routes.ts"), routes);
+    await writeFile(join(sandbox, "design-flow.yaml"), design);
+    const files = [
+      {
+        relativePath: "routes.ts",
+        sha256: "f".repeat(64),
+        bytes: routes.length
+      },
+      {
+        relativePath: "design-flow.yaml",
+        sha256: "1".repeat(64),
+        bytes: design.length
+      }
+    ];
+    const extracted = await extractArtifacts(sandbox, files);
+    const report = buildEvaluationReport({
+      evaluationId: "design",
+      projectName: "Draft",
+      mode: "rules",
+      manifest: {
+        schemaVersion: 1,
+        snapshotId: "snapshot",
+        createdAt: "2026-07-29T00:00:00.000Z",
+        sourceLabel: "repo",
+        sourceRootStored: false,
+        files,
+        decisions: [],
+        manifestSha256: "2".repeat(64)
+      },
+      extracted
+    });
+    expect(
+      report.edges.find((edge) => edge.kind === "TRIGGERS")?.status
+    ).toBe("HUMAN_REVIEW_REQUIRED");
+    expect(
+      report.findings.some((item) => item.ruleId === "ARF-DESIGN-001")
+    ).toBe(true);
   });
 
   it("scores precision and recall against a known-gap ledger", () => {

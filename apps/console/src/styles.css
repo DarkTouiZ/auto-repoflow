@@ -76,10 +76,11 @@ dl div { text-align: right; } dt { color: #72908f; font-size: .65rem; } dd { mar
 .trace-panel > p { margin: 0; color: #758d9a; font-size: .82rem; }
 code { color: #82b9b3; font: .72rem ui-monospace, monospace; }
 .totals { display: flex; gap: .5rem; } .totals .fail { border-color: #63343a; color: #ef7e88; }
-.findings article { display: grid; grid-template-columns: 105px 1fr auto; gap: 1rem; align-items: start; padding: 1rem 0; border-top: 1px solid #23313b; }
+.totals .review { border-color: #66501e; color: #e5ad45; }
+.findings article { display: grid; grid-template-columns: 150px 1fr auto; gap: 1rem; align-items: start; padding: 1rem 0; border-top: 1px solid #23313b; }
 .findings article:first-of-type { margin-top: 1rem; }
 .findings article p { margin: .35rem 0 0; color: #748c98; font-size: .8rem; }
-.status { color: #e5ad45; font: 700 .65rem ui-monospace, monospace; }
+.status { color: #e5ad45; font: 700 .62rem/1.35 ui-monospace, monospace; overflow-wrap: anywhere; }
 .status.fail { color: #ef6f7a; }
 footer { padding: 2rem 0 0; color: #506875; text-align: center; font-size: .72rem; }
 

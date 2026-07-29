@@ -48,23 +48,23 @@ const benchmarkReport: Report = {
     {
       id: "api-spec",
       label: "API specification",
-      covered: 9,
-      total: 11,
-      percentage: 81.8
+      covered: 8,
+      total: 10,
+      percentage: 80
     },
     {
       id: "implementation",
       label: "Implementation",
-      covered: 11,
-      total: 11,
+      covered: 10,
+      total: 10,
       percentage: 100
     },
     {
       id: "test",
       label: "Test evidence",
-      covered: 1,
-      total: 11,
-      percentage: 9.1
+      covered: 0,
+      total: 10,
+      percentage: 0
     },
     {
       id: "ui-api",
@@ -175,15 +175,23 @@ const benchmarkReport: Report = {
           <div class="panel-title">
             <div>
               <p class="eyebrow">TRACEABILITY MATRIX</p>
-              <h2>10 operations in scope</h2>
+              <h2>{{ coverageById("implementation").total }} operations in scope</h2>
             </div>
             <span class="mode">RULES + EVIDENCE</span>
           </div>
           <div class="trace-flow">
-            <div><b>UI</b><span>10</span></div><i>→</i>
-            <div><b>API</b><span>11</span></div><i>→</i>
-            <div><b>CODE</b><span>11</span></div><i>→</i>
-            <div class="weak"><b>TEST</b><span>1</span></div>
+            <div>
+              <b>UI</b><span>{{ coverageById("ui-api").covered }}</span>
+            </div><i>→</i>
+            <div>
+              <b>API</b><span>{{ coverageById("api-spec").total }}</span>
+            </div><i>→</i>
+            <div>
+              <b>CODE</b><span>{{ coverageById("implementation").covered }}</span>
+            </div><i>→</i>
+            <div class="weak">
+              <b>TEST</b><span>{{ coverageById("test").covered }}</span>
+            </div>
           </div>
           <p>
             Every link carries a file hash and locator. Missing proof stays
@@ -200,6 +208,9 @@ const benchmarkReport: Report = {
             <div class="totals">
               <span class="fail">{{ report().summary.fail }} fail</span>
               <span>{{ report().summary.unverified }} unverified</span>
+              <span class="review">
+                {{ report().summary.humanReviewRequired }} human review
+              </span>
             </div>
           </div>
           <article *ngFor="let finding of report().findings.slice(0, 8)">
@@ -227,6 +238,18 @@ export class AppComponent implements OnInit {
   readonly report = signal<Report>(benchmarkReport);
   readonly live = signal(false);
   readonly message = signal("");
+
+  coverageById(id: string): Coverage {
+    return (
+      this.report().coverage.find((item) => item.id === id) ?? {
+        id,
+        label: id,
+        covered: 0,
+        total: 0,
+        percentage: 0
+      }
+    );
+  }
 
   ngOnInit(): void {
     const evaluationId = new URLSearchParams(window.location.search).get(

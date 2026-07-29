@@ -30,6 +30,7 @@ function printHelp(): void {
 Local evidence evaluation:
   eval snapshot --source <path> --project <name>
   eval validate --id <evaluation-id>
+  eval attach --id <evaluation-id> --file <path> --as design-flow.yaml
   eval run --id <evaluation-id> [--mode rules|local-ai] [--scope-prefix <path>]
   eval report --id <evaluation-id>
   eval score --id <evaluation-id> --ledger <known-gaps.json>
@@ -91,7 +92,19 @@ async function main(): Promise<void> {
   }
 
   const evaluationId = requireFlag(values, "id");
-  if (action === "validate") {
+  if (action === "attach") {
+    console.log(
+      JSON.stringify(
+        await service.attachEvidence({
+          evaluationId,
+          filePath: requireFlag(values, "file"),
+          alias: requireFlag(values, "as")
+        }),
+        null,
+        2
+      )
+    );
+  } else if (action === "validate") {
     const result = await service.validate(evaluationId);
     console.log(JSON.stringify(result, null, 2));
     if (!result.valid) process.exitCode = 2;

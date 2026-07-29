@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import type { EvaluationReport } from "@auto-repoflow/domain";
 import {
   createSemanticLinkProvider,
@@ -16,6 +16,8 @@ import { extractArtifacts } from "./extract.js";
 import {
   createPrivateSnapshot,
   getPrivateRoot,
+  privacyDecisionFor,
+  sha256,
   type SnapshotManifest
 } from "./privacy.js";
 
@@ -114,6 +116,63 @@ export class EvaluationService {
       valid: errors.length === 0,
       checkedFiles: manifest.files.length,
       errors
+    };
+  }
+
+  async attachEvidence(input: {
+    evaluationId: string;
+    filePath: string;
+    alias: string;
+  }): Promise<{
+    evaluationId: string;
+    relativePath: string;
+    sha256: string;
+    manifestSha256: string;
+  }> {
+    if (
+      basename(input.alias) !== input.alias ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.alias)
+    ) {
+      throw new Error("Evidence alias must be a safe filename without directories");
+    }
+    const relativePath = `.evaluation-input/${input.alias}`;
+    const decision = privacyDecisionFor(relativePath);
+    if (decision.decision !== "INCLUDED") {
+      throw new Error(`Evidence rejected by privacy policy: ${decision.reason}`);
+    }
+    const root = await getPrivateRoot();
+    const directory = join(root, "evaluations", input.evaluationId);
+    const manifestPath = join(directory, "manifest.json");
+    const manifest = await readJson<SnapshotManifest>(manifestPath);
+    const contents = await readFile(input.filePath);
+    const destinationDirectory = join(directory, "snapshot", ".evaluation-input");
+    const destination = join(destinationDirectory, input.alias);
+    await mkdir(destinationDirectory, { recursive: true, mode: 0o700 });
+    await writeFile(destination, contents, { flag: "wx", mode: 0o600 });
+    const digest = sha256(contents);
+    manifest.files.push({
+      relativePath,
+      sha256: digest,
+      bytes: contents.byteLength
+    });
+    manifest.files.sort((a, b) =>
+      a.relativePath.localeCompare(b.relativePath)
+    );
+    manifest.decisions.push({
+      relativePath,
+      decision: "INCLUDED",
+      reason: "explicit_external_evidence"
+    });
+    const { manifestSha256: _previousHash, ...manifestCore } = manifest;
+    manifest.manifestSha256 = sha256(JSON.stringify(manifestCore));
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, {
+      mode: 0o600
+    });
+    return {
+      evaluationId: input.evaluationId,
+      relativePath,
+      sha256: digest,
+      manifestSha256: manifest.manifestSha256
     };
   }
 
