@@ -279,7 +279,14 @@ function extractTestPlan(
         name?: string;
         api_operation?: string;
         level?: string;
-        scenarios?: unknown[];
+        scenarios?: Array<
+          | string
+          | {
+              name?: string;
+              status?: string;
+              reason?: string;
+            }
+        >;
       }>;
     };
     const reviewStatus = document.review_status ?? "draft";
@@ -303,8 +310,26 @@ function extractTestPlan(
         )
       );
       for (const scenarioValue of testCase.scenarios ?? []) {
-        const scenario = String(scenarioValue).trim();
+        const scenario =
+          typeof scenarioValue === "string"
+            ? scenarioValue.trim()
+            : String(scenarioValue?.name ?? "").trim();
         if (!scenario) continue;
+        const scenarioStatus =
+          typeof scenarioValue === "string"
+            ? "in_scope"
+            : String(scenarioValue.status ?? "in_scope");
+        const scenarioAttributes: Record<string, string> = {
+          source: "test-plan-scenario",
+          reviewStatus,
+          apiOperation: testCase.api_operation,
+          scenario,
+          scenarioStatus,
+          level: testCase.level ?? "unspecified"
+        };
+        if (typeof scenarioValue !== "string" && scenarioValue.reason) {
+          scenarioAttributes.scenarioReason = scenarioValue.reason;
+        }
         nodes.push(
           node(
             "TEST_CASE",
@@ -312,13 +337,7 @@ function extractTestPlan(
             `test-plan-scenario:${testId}:${scenario}`,
             file,
             undefined,
-            {
-              source: "test-plan-scenario",
-              reviewStatus,
-              apiOperation: testCase.api_operation,
-              scenario,
-              level: testCase.level ?? "unspecified"
-            }
+            scenarioAttributes
           )
         );
       }

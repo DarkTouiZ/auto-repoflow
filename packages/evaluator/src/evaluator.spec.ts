@@ -249,7 +249,10 @@ describe("evidence evaluator", () => {
       "    api_operation: GET /api/widgets",
       "    scenarios:",
       "      - populated mock result",
-      "      - permission behavior requires confirmation"
+      "      - error response",
+      "      - name: permission behavior requires confirmation",
+      "        status: deferred_future",
+      "        reason: authorization is planned after the POC"
     ].join("\n");
     const tests = [
       'it("GET /api/widgets [scenario: populated mock result]", async () => {});',
@@ -295,6 +298,9 @@ describe("evidence evaluator", () => {
     expect(
       report.coverage.find((item) => item.id === "test-scenario")
     ).toMatchObject({ covered: 1, total: 2, percentage: 50 });
+    expect(
+      report.coverage.find((item) => item.id === "test-scenario-roadmap")
+    ).toMatchObject({ covered: 1, total: 3, percentage: 33.3 });
     expect(
       report.findings.filter(
         (item) => item.ruleId === "ARF-TEST-SCENARIO-001"

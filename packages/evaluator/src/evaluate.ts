@@ -50,6 +50,20 @@ function normalizedScenario(value: unknown): string {
     .replace(/\s+/g, " ");
 }
 
+function isDeferredScenarioStatus(value: unknown): boolean {
+  const status = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[\s-]+/g, "_");
+  return [
+    "deferred",
+    "deferred_future",
+    "future",
+    "external",
+    "out_of_scope"
+  ].includes(status);
+}
+
 function finding(
   ruleId: string,
   status: Finding["status"],
@@ -174,13 +188,16 @@ export function buildEvaluationReport(input: {
     (item) =>
       item.kind === "TEST_CASE" && item.attributes?.source === "test-plan"
   );
-  const plannedScenarios = nodes.filter(
+  const roadmapScenarios = nodes.filter(
     (item) =>
       item.kind === "TEST_CASE" &&
       item.attributes?.source === "test-plan-scenario" &&
       !isDraftReviewStatus(item.attributes?.reviewStatus) &&
       (!input.scopePrefix ||
         String(item.attributes?.apiOperation ?? "").includes(input.scopePrefix))
+  );
+  const plannedScenarios = roadmapScenarios.filter(
+    (item) => !isDeferredScenarioStatus(item.attributes?.scenarioStatus)
   );
   const symbols = nodes.filter((item) => item.kind === "CODE_SYMBOL");
   const findings: Finding[] = [];
@@ -191,6 +208,7 @@ export function buildEvaluationReport(input: {
   let routeWithTest = 0;
   let routeWithTestPlan = 0;
   let plannedScenarioWithTest = 0;
+  let roadmapScenarioWithTest = 0;
   let routeWithImplementation = 0;
   let actionsWithApi = 0;
   const screens = nodes.filter((item) => item.kind === "SCREEN");
@@ -503,16 +521,22 @@ export function buildEvaluationReport(input: {
     );
   }
 
-  for (const plannedScenario of plannedScenarios) {
+  for (const plannedScenario of roadmapScenarios) {
     const operation = String(plannedScenario.attributes?.apiOperation ?? "");
     const scenario = normalizedScenario(plannedScenario.attributes?.scenario);
+    const deferred = isDeferredScenarioStatus(
+      plannedScenario.attributes?.scenarioStatus
+    );
     const executableTest = tests.find(
       (candidate) =>
         String(candidate.attributes?.operation ?? "") === operation &&
         normalizedScenario(candidate.attributes?.scenario) === scenario
     );
     if (executableTest) {
-      plannedScenarioWithTest += 1;
+      roadmapScenarioWithTest += 1;
+      if (!deferred) {
+        plannedScenarioWithTest += 1;
+      }
       edges.push(
         makeEdge(
           "VERIFIED_BY",
@@ -522,7 +546,7 @@ export function buildEvaluationReport(input: {
           "Exact API operation and reviewed scenario label"
         )
       );
-    } else {
+    } else if (!deferred) {
       findings.push(
         finding(
           "ARF-TEST-SCENARIO-001",
@@ -626,10 +650,17 @@ export function buildEvaluationReport(input: {
     },
     {
       id: "test-scenario",
-      label: "Reviewed test-plan scenarios linked to executable tests",
+      label: "Current-scope reviewed scenarios linked to executable tests",
       covered: plannedScenarioWithTest,
       total: plannedScenarios.length,
       percentage: percent(plannedScenarioWithTest, plannedScenarios.length)
+    },
+    {
+      id: "test-scenario-roadmap",
+      label: "Full-roadmap reviewed scenarios linked to executable tests",
+      covered: roadmapScenarioWithTest,
+      total: roadmapScenarios.length,
+      percentage: percent(roadmapScenarioWithTest, roadmapScenarios.length)
     },
     {
       id: "ui-api",
