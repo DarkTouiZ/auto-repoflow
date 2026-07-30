@@ -28,6 +28,7 @@ function printHelp(): void {
   console.log(`Auto-RepoFlow 0.1.0
 
 Local evidence evaluation:
+  eval pipeline --config <private-config.yaml>
   eval snapshot --source <path> --project <name>
   eval validate --id <evaluation-id>
   eval attach --id <evaluation-id> --file <path> --as design-flow.yaml
@@ -61,6 +62,16 @@ async function main(): Promise<void> {
 
   const values = flags(rest);
   const service = new EvaluationService();
+  if (action === "pipeline") {
+    console.log(
+      JSON.stringify(
+        await service.runPipeline(requireFlag(values, "config")),
+        null,
+        2
+      )
+    );
+    return;
+  }
   if (action === "purge-expired") {
     const days = Number(values.get("days") ?? "7");
     console.log(

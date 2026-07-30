@@ -470,6 +470,131 @@ describe("evidence evaluator", () => {
   });
 });
 
+describe("config-driven evaluation pipeline", () => {
+  it("runs snapshot, evidence attachment, validation, evaluation and public export", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-pipeline-"));
+    const home = join(sandbox, "home");
+    const source = join(sandbox, "source");
+    const evidencePath = join(sandbox, "collection.json");
+    const configPath = join(sandbox, "pipeline.yaml");
+    process.env.HOME = home;
+    await mkdir(home, { recursive: true });
+    await mkdir(source, { recursive: true });
+
+    const routes =
+      'app.get("/api/mock/items", listItems); export function listItems() {}';
+    const tests =
+      'it("GET /api/mock/items returns mock items", async () => {});';
+    await writeFile(join(source, "routes.ts"), routes);
+    await writeFile(join(source, "routes.test.ts"), tests);
+    await writeFile(
+      join(source, "package.json"),
+      JSON.stringify({
+        scripts: {
+          build: "tsc",
+          test: "vitest run",
+          typecheck: "tsc --noEmit"
+        }
+      })
+    );
+    await writeFile(
+      evidencePath,
+      JSON.stringify({
+        info: {
+          name: "Reviewed mock contract",
+          "x-autorepoflow-review-status": "human_reviewed"
+        },
+        item: [
+          {
+            name: "List mock items",
+            request: {
+              method: "GET",
+              url: "{{baseUrl}}/api/mock/items"
+            }
+          }
+        ]
+      })
+    );
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        sourcePath: source,
+        projectName: "Private Pipeline Project",
+        scopePrefix: "/api/mock",
+        evidence: [
+          {
+            filePath: evidencePath,
+            alias: "postman.json"
+          }
+        ],
+        exportPublic: true
+      })
+    );
+
+    const result = await new EvaluationService().runPipeline(configPath);
+
+    expect(result.validation).toMatchObject({ valid: true, checkedFiles: 4 });
+    expect(result.attachedEvidence).toHaveLength(1);
+    expect(
+      result.coverage.find((item) => item.id === "api-spec")
+    ).toMatchObject({ covered: 1, total: 1 });
+    expect(
+      result.coverage.find((item) => item.id === "test")
+    ).toMatchObject({ covered: 1, total: 1 });
+    const publicReport = await readFile(result.publicReportPath!, "utf8");
+    expect(publicReport).not.toContain("Private Pipeline Project");
+    expect(publicReport).not.toContain(source);
+    expect(publicReport).not.toContain("/api/mock/items");
+  });
+
+  it("rejects unsafe evidence aliases before creating a snapshot", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-pipeline-private-"));
+    const home = join(sandbox, "home");
+    const source = join(sandbox, "source");
+    const evidencePath = join(sandbox, "mock.txt");
+    const configPath = join(sandbox, "pipeline.yaml");
+    process.env.HOME = home;
+    await mkdir(home, { recursive: true });
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "app.ts"), "export const app = true;");
+    await writeFile(evidencePath, "mock");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        sourcePath: source,
+        projectName: "Mock",
+        evidence: [{ filePath: evidencePath, alias: "secret.pem" }]
+      })
+    );
+
+    await expect(
+      new EvaluationService().runPipeline(configPath)
+    ).rejects.toThrow(/rejected by privacy policy/);
+  });
+
+  it("rejects a home directory as an overly broad source", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-pipeline-scope-"));
+    const home = join(sandbox, "home");
+    const configPath = join(sandbox, "pipeline.yaml");
+    process.env.HOME = home;
+    await mkdir(home, { recursive: true });
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        sourcePath: home,
+        projectName: "Mock"
+      })
+    );
+
+    await expect(
+      new EvaluationService().runPipeline(configPath)
+    ).rejects.toThrow(/scoped repository directory/);
+  });
+});
+
 describe("local AI evidence guard", () => {
   it("rejects non-loopback Ollama endpoints", () => {
     expect(

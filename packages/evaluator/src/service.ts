@@ -20,12 +20,76 @@ import {
   sha256,
   type SnapshotManifest
 } from "./privacy.js";
+import {
+  loadEvaluationPipelineConfig,
+  preflightEvaluationPipelineConfig
+} from "./pipeline.js";
 
 async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
 }
 
 export class EvaluationService {
+  async runPipeline(configPath: string) {
+    const configContents = await readFile(configPath);
+    const config = await loadEvaluationPipelineConfig(configPath);
+    await preflightEvaluationPipelineConfig(config);
+
+    const snapshot = await this.snapshot({
+      sourcePath: config.sourcePath,
+      projectName: config.projectName
+    });
+    const attachedEvidence: Array<{
+      alias: string;
+      sha256: string;
+    }> = [];
+    let manifestSha256 = snapshot.manifest.manifestSha256;
+    for (const item of config.evidence) {
+      const attached = await this.attachEvidence({
+        evaluationId: snapshot.evaluationId,
+        filePath: item.filePath,
+        alias: item.alias
+      });
+      attachedEvidence.push({
+        alias: item.alias,
+        sha256: attached.sha256
+      });
+      manifestSha256 = attached.manifestSha256;
+    }
+
+    const validation = await this.validate(snapshot.evaluationId);
+    if (!validation.valid) {
+      throw new Error(
+        `Pipeline manifest validation failed with ${validation.errors.length} error(s)`
+      );
+    }
+    const report = await this.run({
+      evaluationId: snapshot.evaluationId,
+      mode: config.mode,
+      scopePrefix: config.scopePrefix
+    });
+    const publicExport = config.exportPublic
+      ? await this.exportPublic(snapshot.evaluationId)
+      : undefined;
+
+    return {
+      schemaVersion: 1 as const,
+      configSha256: sha256(configContents),
+      evaluationId: snapshot.evaluationId,
+      manifestSha256,
+      includedFiles: snapshot.manifest.files.length + attachedEvidence.length,
+      excludedFiles: snapshot.manifest.decisions.filter(
+        (item) => item.decision === "EXCLUDED"
+      ).length,
+      attachedEvidence,
+      validation,
+      status: report.status,
+      summary: report.summary,
+      coverage: report.coverage,
+      publicReportPath: publicExport?.path
+    };
+  }
+
   async snapshot(input: {
     sourcePath: string;
     projectName: string;

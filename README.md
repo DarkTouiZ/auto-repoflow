@@ -42,6 +42,36 @@ mirrors, and worktrees are excluded from Git.
 
 ## Evaluate a local repository
 
+Use a private config outside the repository for the automated pipeline:
+
+```yaml
+schemaVersion: 1
+sourcePath: /absolute/path/to/repository
+projectName: Local-Pilot
+mode: rules
+scopePrefix: /api
+evidence:
+  - filePath: /private/local/design-flow.yaml
+    alias: design-flow.yaml
+  - filePath: /private/local/test-plan.yaml
+    alias: test-plan.yaml
+exportPublic: true
+```
+
+```bash
+npm run build
+node apps/cli/dist/main.js eval pipeline \
+  --config /absolute/private/path/evaluation-pipeline.yaml
+```
+
+The pipeline preflights paths and evidence aliases, creates a privacy-filtered
+snapshot, attaches explicit evidence, validates every manifest hash, evaluates
+the selected scope, and writes an anonymized public report. Filesystem roots,
+the home directory, relative paths, duplicate aliases, and secret evidence
+filenames are rejected before snapshotting.
+
+The individual commands remain available for inspection and repair:
+
 ```bash
 npm run build
 node apps/cli/dist/main.js eval snapshot \
