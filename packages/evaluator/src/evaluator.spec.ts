@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
@@ -480,6 +480,7 @@ describe("config-driven evaluation pipeline", () => {
     process.env.HOME = home;
     await mkdir(home, { recursive: true });
     await mkdir(source, { recursive: true });
+    await mkdir(join(source, "node_modules", ".bin"), { recursive: true });
 
     const routes =
       'app.get("/api/mock/items", listItems); export function listItems() {}';
@@ -487,6 +488,12 @@ describe("config-driven evaluation pipeline", () => {
       'it("GET /api/mock/items returns mock items", async () => {});';
     await writeFile(join(source, "routes.ts"), routes);
     await writeFile(join(source, "routes.test.ts"), tests);
+    const mockTsc = join(source, "node_modules", ".bin", "tsc");
+    await writeFile(
+      mockTsc,
+      '#!/usr/bin/env node\nconsole.log("mock typecheck passed");\n'
+    );
+    await chmod(mockTsc, 0o755);
     await writeFile(
       join(source, "package.json"),
       JSON.stringify({
@@ -528,6 +535,10 @@ describe("config-driven evaluation pipeline", () => {
             alias: "postman.json"
           }
         ],
+        quality: {
+          timeoutSeconds: 10,
+          checks: [{ id: "typecheck", tool: "tsc", args: [] }]
+        },
         exportPublic: true
       })
     );
@@ -536,6 +547,10 @@ describe("config-driven evaluation pipeline", () => {
 
     expect(result.validation).toMatchObject({ valid: true, checkedFiles: 4 });
     expect(result.attachedEvidence).toHaveLength(1);
+    expect(result.quality).toMatchObject({
+      passed: true,
+      checks: [{ id: "typecheck", tool: "tsc", passed: true }]
+    });
     expect(
       result.coverage.find((item) => item.id === "api-spec")
     ).toMatchObject({ covered: 1, total: 1 });
@@ -592,6 +607,70 @@ describe("config-driven evaluation pipeline", () => {
     await expect(
       new EvaluationService().runPipeline(configPath)
     ).rejects.toThrow(/scoped repository directory/);
+  });
+
+  it("stops before evaluation and public export when a required quality check fails", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-pipeline-quality-"));
+    const home = join(sandbox, "home");
+    const source = join(sandbox, "source");
+    const configPath = join(sandbox, "pipeline.yaml");
+    process.env.HOME = home;
+    await mkdir(home, { recursive: true });
+    await mkdir(join(source, "node_modules", ".bin"), { recursive: true });
+    await writeFile(join(source, "app.ts"), "export const app = true;");
+    const mockJest = join(source, "node_modules", ".bin", "jest");
+    await writeFile(mockJest, "#!/usr/bin/env node\nprocess.exit(2);\n");
+    await chmod(mockJest, 0o755);
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        sourcePath: source,
+        projectName: "Mock",
+        quality: {
+          timeoutSeconds: 10,
+          checks: [{ id: "unit", tool: "jest", args: [] }]
+        }
+      })
+    );
+
+    const result = await new EvaluationService().runPipeline(configPath);
+
+    expect(result).toMatchObject({
+      status: "QUALITY_FAILED",
+      quality: {
+        passed: false,
+        checks: [{ id: "unit", passed: false, exitCode: 2 }]
+      },
+      coverage: []
+    });
+    expect(result.publicReportPath).toBeUndefined();
+  });
+
+  it("rejects unsupported quality tools instead of running arbitrary commands", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-pipeline-tool-"));
+    const home = join(sandbox, "home");
+    const source = join(sandbox, "source");
+    const configPath = join(sandbox, "pipeline.yaml");
+    process.env.HOME = home;
+    await mkdir(home, { recursive: true });
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "app.ts"), "export const app = true;");
+    await writeFile(
+      configPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        sourcePath: source,
+        projectName: "Mock",
+        quality: {
+          checks: [{ id: "unsafe", tool: "bash", args: ["-c", "echo"] }]
+        }
+      })
+    );
+
+    await expect(
+      new EvaluationService().runPipeline(configPath)
+    ).rejects.toThrow();
   });
 });
 

@@ -15,6 +15,33 @@ const evidenceSchema = z.object({
     )
 });
 
+const qualityCheckSchema = z.object({
+  id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/),
+  tool: z.enum(["tsc", "jest", "vitest", "eslint", "tslint"]),
+  args: z
+    .array(
+      z
+        .string()
+        .min(1)
+        .max(200)
+        .refine(
+          (value) =>
+            !value.includes("\n") &&
+            !value.includes("\r") &&
+            !value.includes("..") &&
+            !value.includes("://") &&
+            !value.startsWith("/") &&
+            !["--watch", "--watchAll", "--updateSnapshot", "-u"].includes(
+              value
+            ),
+          "Quality arguments must be local, non-interactive and non-mutating"
+        )
+    )
+    .max(30)
+    .default([]),
+  required: z.boolean().default(true)
+});
+
 export const evaluationPipelineConfigSchema = z.object({
   schemaVersion: z.literal(1),
   sourcePath: z.string().min(1),
@@ -22,6 +49,12 @@ export const evaluationPipelineConfigSchema = z.object({
   mode: z.enum(["rules", "local-ai"]).default("rules"),
   scopePrefix: z.string().startsWith("/").optional(),
   evidence: z.array(evidenceSchema).max(20).default([]),
+  quality: z
+    .object({
+      timeoutSeconds: z.number().int().min(1).max(900).default(300),
+      checks: z.array(qualityCheckSchema).min(1).max(10)
+    })
+    .optional(),
   exportPublic: z.boolean().default(true)
 });
 
@@ -78,5 +111,12 @@ export async function preflightEvaluationPipelineConfig(
     if (!evidenceStat.isFile()) {
       throw new Error(`Evidence path for ${item.alias} must be a file`);
     }
+  }
+  const qualityIds = new Set<string>();
+  for (const check of config.quality?.checks ?? []) {
+    if (qualityIds.has(check.id)) {
+      throw new Error(`Duplicate quality check id: ${check.id}`);
+    }
+    qualityIds.add(check.id);
   }
 }

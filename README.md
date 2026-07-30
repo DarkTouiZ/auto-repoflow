@@ -55,6 +55,15 @@ evidence:
     alias: design-flow.yaml
   - filePath: /private/local/test-plan.yaml
     alias: test-plan.yaml
+quality:
+  timeoutSeconds: 300
+  checks:
+    - id: typecheck
+      tool: tsc
+      args: [--noEmit]
+    - id: unit-tests
+      tool: jest
+      args: [--config, jest.unit.config.ts, --runInBand]
 exportPublic: true
 ```
 
@@ -69,6 +78,12 @@ snapshot, attaches explicit evidence, validates every manifest hash, evaluates
 the selected scope, and writes an anonymized public report. Filesystem roots,
 the home directory, relative paths, duplicate aliases, and secret evidence
 filenames are rejected before snapshotting.
+
+Quality checks use local binaries from `node_modules` and a fixed tool
+allowlist (`tsc`, `jest`, `vitest`, `eslint`, and `tslint`). They run without a
+shell, with a sanitized environment, bounded arguments, capped output, and a
+timeout. A required failure stops evaluation and public export; full logs stay
+private beside the evaluation.
 
 The individual commands remain available for inspection and repair:
 

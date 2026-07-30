@@ -24,6 +24,7 @@ import {
   loadEvaluationPipelineConfig,
   preflightEvaluationPipelineConfig
 } from "./pipeline.js";
+import { runQualityChecks } from "./quality.js";
 
 async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
@@ -63,6 +64,72 @@ export class EvaluationService {
         `Pipeline manifest validation failed with ${validation.errors.length} error(s)`
       );
     }
+    const pipelineBase = {
+      schemaVersion: 1 as const,
+      configSha256: sha256(configContents),
+      evaluationId: snapshot.evaluationId,
+      manifestSha256,
+      includedFiles: snapshot.manifest.files.length + attachedEvidence.length,
+      excludedFiles: snapshot.manifest.decisions.filter(
+        (item) => item.decision === "EXCLUDED"
+      ).length,
+      attachedEvidence,
+      validation
+    };
+    let quality:
+      | {
+          passed: boolean;
+          evidencePath: string;
+          checks: Array<{
+            id: string;
+            tool: string;
+            required: boolean;
+            passed: boolean;
+            exitCode: number | null;
+            timedOut: boolean;
+            durationMs: number;
+          }>;
+        }
+      | undefined;
+    if (config.quality) {
+      const qualityResult = await runQualityChecks({
+        sourcePath: config.sourcePath,
+        evaluationDirectory: snapshot.evaluationDirectory,
+        quality: config.quality
+      });
+      const evidencePath = join(
+        snapshot.evaluationDirectory,
+        "quality-results.json"
+      );
+      await writeFile(
+        evidencePath,
+        `${JSON.stringify(qualityResult, null, 2)}\n`,
+        { mode: 0o600 }
+      );
+      quality = {
+        passed: qualityResult.passed,
+        evidencePath,
+        checks: qualityResult.checks.map((item) => ({
+          id: item.id,
+          tool: item.tool,
+          required: item.required,
+          passed: item.passed,
+          exitCode: item.exitCode,
+          timedOut: item.timedOut,
+          durationMs: item.durationMs
+        }))
+      };
+      if (!qualityResult.passed) {
+        return {
+          ...pipelineBase,
+          status: "QUALITY_FAILED" as const,
+          quality,
+          summary: undefined,
+          coverage: [],
+          publicReportPath: undefined
+        };
+      }
+    }
     const report = await this.run({
       evaluationId: snapshot.evaluationId,
       mode: config.mode,
@@ -73,17 +140,9 @@ export class EvaluationService {
       : undefined;
 
     return {
-      schemaVersion: 1 as const,
-      configSha256: sha256(configContents),
-      evaluationId: snapshot.evaluationId,
-      manifestSha256,
-      includedFiles: snapshot.manifest.files.length + attachedEvidence.length,
-      excludedFiles: snapshot.manifest.decisions.filter(
-        (item) => item.decision === "EXCLUDED"
-      ).length,
-      attachedEvidence,
-      validation,
+      ...pipelineBase,
       status: report.status,
+      quality,
       summary: report.summary,
       coverage: report.coverage,
       publicReportPath: publicExport?.path
