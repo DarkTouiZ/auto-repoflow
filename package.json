@@ -1,5 +1,5 @@
 {
-  "name": "auto-repoflow",
+  "name": "@auto-repoflow/workspace",
   "version": "0.1.0",
   "private": true,
   "description": "Local-first, identity-aware software change automation that stops at a draft pull request.",
@@ -12,7 +12,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "build": "npm run build -w @auto-repoflow/contracts && npm run build -w @auto-repoflow/domain && npm run build -w @auto-repoflow/evaluator && npm run build -w @auto-repoflow/api && npm run build -w @auto-repoflow/worker && npm run build -w @auto-repoflow/cli && npm run build -w @auto-repoflow/console",
+    "build": "npm run build -w @auto-repoflow/contracts && npm run build -w @auto-repoflow/domain && npm run build -w @auto-repoflow/evaluator && npm run build -w @auto-repoflow/api && npm run build -w @auto-repoflow/worker && npm run build -w auto-repoflow && npm run build -w @auto-repoflow/console",
     "test": "vitest run",
     "test:watch": "vitest",
     "doctor": "node scripts/doctor.mjs",
@@ -22,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "^0.28.1",
     "tsx": "^4.20.0",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0",

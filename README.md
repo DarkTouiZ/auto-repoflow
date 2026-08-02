@@ -9,6 +9,38 @@ This repository is a clean implementation inspired by lessons from the
 SuperAI Engineer SS6 project. It does not contain company source code, private
 records, internal endpoints, or proprietary schemas.
 
+## Public CLI alpha
+
+The public package is designed around one safe, zero-config command:
+
+```bash
+npx auto-repoflow scan .
+```
+
+It can also produce a portable review packet for the AI assistant or coding
+agent that the user already trusts:
+
+```bash
+npx auto-repoflow scan . \
+  --format agent-md \
+  --out auto-repoflow-fix-packet.md
+```
+
+The npm package metadata and standalone runtime are implemented in this
+repository but version `0.1.0` has not been published yet. To test the same CLI
+from a checkout:
+
+```bash
+npm install
+npm run build
+node apps/cli/dist/main.js scan /path/to/repository
+```
+
+`scan` is static by default: it does not run repository scripts, edit files,
+call cloud AI, merge, deploy, or publish. The first public alpha focuses on
+JavaScript and TypeScript repositories and supports `human`, `json`,
+`agent-md`, and `agent-json` outputs.
+
 ## Implemented POC
 
 - private snapshots in `~/.autorepoflow-private` with SHA-256 manifests;
@@ -125,6 +157,11 @@ node apps/cli/dist/main.js eval score \
   --id <milemesh-evaluation-id> \
   --ledger ../milemesh-mock/benchmark/expected-findings.json
 ```
+
+Known-gap ledger schema v2 scores exact stable finding identities and reports
+missed gap IDs plus unexpected finding IDs. Schema v1 remains supported for
+legacy rule-count scoring, and the score output always declares its
+`matchMode`.
 
 ## Privacy boundary
 

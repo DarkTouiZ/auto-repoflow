@@ -9,7 +9,11 @@ import {
   scoreKnownGaps
 } from "./evaluate.js";
 import { extractArtifacts } from "./extract.js";
-import { createPrivateSnapshot, privacyDecisionFor } from "./privacy.js";
+import {
+  MAX_SNAPSHOT_FILE_BYTES,
+  createPrivateSnapshot,
+  privacyDecisionFor
+} from "./privacy.js";
 import {
   OllamaSemanticLinkProvider,
   verifyAiSuggestions
@@ -51,6 +55,28 @@ describe("privacy boundary", () => {
     await expect(
       readFile(join(result.snapshotDirectory, ".env"), "utf8")
     ).rejects.toThrow();
+  });
+
+  it("excludes oversized files before copying them", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-large-file-"));
+    process.env.HOME = join(sandbox, "home");
+    const source = join(sandbox, "source");
+    await mkdir(source, { recursive: true });
+    await writeFile(
+      join(source, "large.bin"),
+      Buffer.alloc(MAX_SNAPSHOT_FILE_BYTES + 1)
+    );
+
+    const result = await createPrivateSnapshot({
+      sourcePath: source,
+      projectName: "large-file"
+    });
+    expect(result.manifest.files).toEqual([]);
+    expect(result.manifest.decisions).toContainEqual({
+      relativePath: "large.bin",
+      decision: "EXCLUDED",
+      reason: "oversized_file"
+    });
   });
 
   it("attaches explicit evidence by hash and rejects secret aliases", async () => {
@@ -461,12 +487,87 @@ describe("evidence evaluator", () => {
       ]
     });
     expect(score).toMatchObject({
+      ledgerSchemaVersion: 1,
+      matchMode: "rule-count",
       truePositive: 2,
       falsePositive: 1,
       falseNegative: 1,
       precision: 66.7,
       recall: 66.7
     });
+  });
+
+  it("scores schema v2 ledgers by exact finding identity", () => {
+    const report = {
+      findings: [
+        { id: "finding:RULE-A:one", ruleId: "RULE-A" },
+        { id: "finding:RULE-A:wrong-subject", ruleId: "RULE-A" },
+        { id: "finding:RULE-C:unexpected", ruleId: "RULE-C" }
+      ]
+    };
+    const score = scoreKnownGaps(report as never, {
+      schemaVersion: 2,
+      gaps: [
+        {
+          id: "G01",
+          ruleId: "RULE-A",
+          subject: "one",
+          findingId: "finding:RULE-A:one"
+        },
+        {
+          id: "G02",
+          ruleId: "RULE-A",
+          subject: "two",
+          findingId: "finding:RULE-A:two"
+        },
+        {
+          id: "G03",
+          ruleId: "RULE-B",
+          subject: "three",
+          findingId: "finding:RULE-B:three"
+        }
+      ]
+    });
+    expect(score).toEqual({
+      ledgerSchemaVersion: 2,
+      matchMode: "finding-id",
+      expected: 3,
+      detected: 3,
+      truePositive: 1,
+      falsePositive: 2,
+      falseNegative: 2,
+      precision: 33.3,
+      recall: 33.3,
+      matchedGapIds: ["G01"],
+      missedGapIds: ["G02", "G03"],
+      unexpectedFindingIds: [
+        "finding:RULE-A:wrong-subject",
+        "finding:RULE-C:unexpected"
+      ]
+    });
+  });
+
+  it("rejects duplicate finding identities in schema v2 ledgers", () => {
+    const ledger = {
+      schemaVersion: 2 as const,
+      gaps: [
+        {
+          id: "G01",
+          ruleId: "RULE-A",
+          subject: "one",
+          findingId: "finding:RULE-A:one"
+        },
+        {
+          id: "G02",
+          ruleId: "RULE-A",
+          subject: "duplicate",
+          findingId: "finding:RULE-A:one"
+        }
+      ]
+    };
+    expect(() =>
+      scoreKnownGaps({ findings: [] } as never, ledger)
+    ).toThrow("duplicate finding IDs");
   });
 });
 

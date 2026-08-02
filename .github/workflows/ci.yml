@@ -19,3 +19,6 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: node apps/cli/dist/main.js --version
+      - run: node apps/cli/dist/main.js scan --help
+      - run: npm pack --dry-run -w auto-repoflow
