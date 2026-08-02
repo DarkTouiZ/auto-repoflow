@@ -9,6 +9,7 @@ import {
   stat,
   writeFile
 } from "node:fs/promises";
+import { homedir } from "node:os";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
 import type { PrivacyDecision } from "@auto-repoflow/domain";
 
@@ -29,6 +30,7 @@ const ALWAYS_EXCLUDED_NAMES = new Set([
 const SECRET_BASENAME =
   /^(?:\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx|crt|cer|der|jks|keystore)|id_(?:rsa|dsa|ecdsa|ed25519))$/i;
 const GENERATED_FILE = /(?:^|\/)(?:npm-debug|yarn-debug|yarn-error).*\.log$|\.log$/i;
+export const MAX_SNAPSHOT_FILE_BYTES = 5_000_000;
 
 export interface SnapshotFile {
   relativePath: string;
@@ -95,7 +97,7 @@ export function sha256(data: string | Buffer): string {
 }
 
 export async function getPrivateRoot(): Promise<string> {
-  const home = process.env.HOME;
+  const home = homedir();
   if (!home) throw new Error("HOME is required to resolve the private root");
   const root = join(home, PRIVATE_ROOT_NAME);
   await mkdir(root, { recursive: true, mode: 0o700 });
@@ -130,6 +132,15 @@ async function walk(
     if (entry.isDirectory()) {
       await walk(sourceRoot, absolute, decisions, files);
     } else if (entry.isFile()) {
+      const fileStats = await stat(absolute);
+      if (fileStats.size > MAX_SNAPSHOT_FILE_BYTES) {
+        decisions.push({
+          relativePath: rel,
+          decision: "EXCLUDED",
+          reason: "oversized_file"
+        });
+        continue;
+      }
       decisions.push(decision);
       files.push(absolute);
     }

@@ -738,15 +738,69 @@ export function createPublicReport(report: EvaluationReport) {
   };
 }
 
-export interface KnownGapLedger {
+export interface KnownGapLedgerV1 {
   schemaVersion: 1;
   gaps: Array<{ id: string; ruleId: string; subject: string }>;
 }
+
+export interface KnownGapLedgerV2 {
+  schemaVersion: 2;
+  gaps: Array<{
+    id: string;
+    ruleId: string;
+    subject: string;
+    findingId: string;
+  }>;
+}
+
+export type KnownGapLedger = KnownGapLedgerV1 | KnownGapLedgerV2;
 
 export function scoreKnownGaps(
   report: EvaluationReport,
   ledger: KnownGapLedger
 ) {
+  if (ledger.schemaVersion === 2) {
+    const gapIds = ledger.gaps.map((gap) => gap.id);
+    const expectedFindingIds = ledger.gaps.map((gap) => gap.findingId);
+    if (new Set(gapIds).size !== gapIds.length) {
+      throw new Error("Known-gap ledger contains duplicate gap IDs");
+    }
+    if (new Set(expectedFindingIds).size !== expectedFindingIds.length) {
+      throw new Error("Known-gap ledger contains duplicate finding IDs");
+    }
+
+    const expectedByFindingId = new Map(
+      ledger.gaps.map((gap) => [gap.findingId, gap])
+    );
+    const detectedFindingIds = new Set(report.findings.map((item) => item.id));
+    const matchedGaps = ledger.gaps.filter((gap) =>
+      detectedFindingIds.has(gap.findingId)
+    );
+    const unexpectedFindingIds = report.findings
+      .filter((item) => !expectedByFindingId.has(item.id))
+      .map((item) => item.id);
+    const missedGapIds = ledger.gaps
+      .filter((gap) => !detectedFindingIds.has(gap.findingId))
+      .map((gap) => gap.id);
+    const truePositive = matchedGaps.length;
+    const falsePositive = unexpectedFindingIds.length;
+    const falseNegative = missedGapIds.length;
+    return {
+      ledgerSchemaVersion: ledger.schemaVersion,
+      matchMode: "finding-id" as const,
+      expected: ledger.gaps.length,
+      detected: report.findings.length,
+      truePositive,
+      falsePositive,
+      falseNegative,
+      precision: percent(truePositive, truePositive + falsePositive),
+      recall: percent(truePositive, truePositive + falseNegative),
+      matchedGapIds: matchedGaps.map((gap) => gap.id),
+      missedGapIds,
+      unexpectedFindingIds
+    };
+  }
+
   const expectedByRule = new Map<string, number>();
   const detectedByRule = new Map<string, number>();
   for (const gap of ledger.gaps) {
@@ -771,6 +825,8 @@ export function scoreKnownGaps(
   const falsePositive = Math.max(0, detected - truePositive);
   const falseNegative = Math.max(0, expected - truePositive);
   return {
+    ledgerSchemaVersion: ledger.schemaVersion,
+    matchMode: "rule-count" as const,
     expected,
     detected,
     truePositive,

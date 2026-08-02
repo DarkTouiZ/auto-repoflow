@@ -1,16 +1,46 @@
 {
-  "name": "@auto-repoflow/cli",
+  "name": "auto-repoflow",
   "version": "0.1.0",
-  "private": true,
+  "description": "Privacy-first repository evidence scanner and agent handoff CLI.",
+  "license": "MIT",
   "type": "module",
+  "main": "dist/main.js",
   "bin": {
     "auto-repoflow": "dist/main.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && node ../../scripts/build-cli-package.mjs",
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@auto-repoflow/evaluator": "*"
+    "yaml": "^2.8.0",
+    "zod": "^3.25.0"
+  },
+  "keywords": [
+    "ai-agent",
+    "code-review",
+    "repository-analysis",
+    "developer-tools",
+    "privacy"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DarkTouiZ/auto-repoflow.git"
+  },
+  "homepage": "https://github.com/DarkTouiZ/auto-repoflow#readme",
+  "bugs": {
+    "url": "https://github.com/DarkTouiZ/auto-repoflow/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

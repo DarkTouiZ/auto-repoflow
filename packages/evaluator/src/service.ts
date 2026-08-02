@@ -22,7 +22,8 @@ import {
 } from "./privacy.js";
 import {
   loadEvaluationPipelineConfig,
-  preflightEvaluationPipelineConfig
+  preflightEvaluationPipelineConfig,
+  resolveScopedRepositoryPath
 } from "./pipeline.js";
 import { runQualityChecks } from "./quality.js";
 
@@ -304,8 +305,27 @@ export class EvaluationService {
     projectName: string;
     mode?: "rules" | "local-ai";
   }): Promise<EvaluationReport> {
+    return this.scan(input);
+  }
+
+  async scan(input: {
+    sourcePath: string;
+    projectName?: string;
+    mode?: "rules" | "local-ai";
+  }): Promise<EvaluationReport> {
+    const sourcePath = await resolveScopedRepositoryPath(input.sourcePath);
     const evaluationId = randomUUID();
-    await this.snapshot({ ...input, evaluationId });
+    await this.snapshot({
+      sourcePath,
+      projectName: input.projectName?.trim() || basename(sourcePath),
+      evaluationId
+    });
+    const validation = await this.validate(evaluationId);
+    if (!validation.valid) {
+      throw new Error(
+        `Snapshot validation failed with ${validation.errors.length} error(s)`
+      );
+    }
     return this.run({ evaluationId, mode: input.mode });
   }
 

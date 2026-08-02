@@ -62,6 +62,25 @@ export type EvaluationPipelineConfig = z.infer<
   typeof evaluationPipelineConfigSchema
 >;
 
+export async function resolveScopedRepositoryPath(
+  sourcePath: string
+): Promise<string> {
+  const resolved = await realpath(resolve(sourcePath));
+  const filesystemRoot = parsePath(resolved).root;
+  const configuredHome = resolve(homedir());
+  const resolvedHome = await realpath(configuredHome).catch(() => configuredHome);
+  if (resolved === filesystemRoot || resolved === resolvedHome) {
+    throw new Error(
+      "Repository path must be a scoped repository directory, not a filesystem root or home directory"
+    );
+  }
+  const sourceStat = await stat(resolved);
+  if (!sourceStat.isDirectory()) {
+    throw new Error("Repository path must be a directory");
+  }
+  return resolved;
+}
+
 export async function loadEvaluationPipelineConfig(
   configPath: string
 ): Promise<EvaluationPipelineConfig> {
@@ -79,18 +98,7 @@ export async function preflightEvaluationPipelineConfig(
   if (!isAbsolute(config.sourcePath)) {
     throw new Error("Pipeline sourcePath must be absolute");
   }
-  const sourcePath = await realpath(resolve(config.sourcePath));
-  const filesystemRoot = parsePath(sourcePath).root;
-  if (
-    sourcePath === filesystemRoot ||
-    sourcePath === await realpath(resolve(homedir()))
-  ) {
-    throw new Error("Pipeline sourcePath must be a scoped repository directory");
-  }
-  const sourceStat = await stat(sourcePath);
-  if (!sourceStat.isDirectory()) {
-    throw new Error("Pipeline sourcePath must be a directory");
-  }
+  await resolveScopedRepositoryPath(config.sourcePath);
 
   const aliases = new Set<string>();
   for (const item of config.evidence) {
