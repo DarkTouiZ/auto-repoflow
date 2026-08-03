@@ -71,9 +71,11 @@ Scan options:
   --format <format>     human | json | agent-md | agent-json
   --out <file>          Write the selected output to a file
   --mode <mode>         rules | local-ai (default: rules)
+  --keep-snapshot       Retain the filtered raw snapshot after a successful scan
 
 Safe default:
   scan creates a filtered private snapshot and performs static evaluation only.
+  It removes the raw snapshot after a successful scan unless --keep-snapshot is set.
   It does not run repository scripts, edit source files, call cloud AI, merge, or deploy.
 
 Advanced evaluation workflow:
@@ -176,7 +178,13 @@ async function runScan(args: string[]): Promise<void> {
     return;
   }
   const { flags, positionals } = parseArguments(args);
-  const supportedFlags = new Set(["project", "format", "out", "mode"]);
+  const supportedFlags = new Set([
+    "project",
+    "format",
+    "out",
+    "mode",
+    "keep-snapshot"
+  ]);
   const unknownFlags = [...flags.keys()].filter(
     (name) => !supportedFlags.has(name)
   );
@@ -192,10 +200,15 @@ async function runScan(args: string[]): Promise<void> {
   if (mode !== "rules" && mode !== "local-ai") {
     throw new Error("--mode must be rules or local-ai");
   }
+  const keepSnapshotValue = flags.get("keep-snapshot");
+  if (keepSnapshotValue !== undefined && keepSnapshotValue !== "true") {
+    throw new Error("--keep-snapshot does not accept a value");
+  }
   const report = await new EvaluationService().scan({
     sourcePath: resolve(positionals[0] ?? "."),
     projectName: optionalFlag(flags, "project"),
-    mode
+    mode,
+    retainSnapshot: keepSnapshotValue === "true"
   });
   await emitOutput(
     renderScanOutput(scanFormat(optionalFlag(flags, "format")), report),

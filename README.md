@@ -51,11 +51,14 @@ node apps/cli/dist/main.js scan /path/to/repository
 `scan` is static by default: it does not run repository scripts, edit files,
 call cloud AI, merge, deploy, or publish. The first public alpha focuses on
 JavaScript and TypeScript repositories and supports `human`, `json`,
-`agent-md`, and `agent-json` outputs.
+`agent-md`, and `agent-json` outputs. A successful zero-config scan removes its
+raw source snapshot automatically; use `--keep-snapshot` only when you need to
+inspect the filtered copy locally afterward.
 
 ## Implemented POC
 
-- private snapshots in `~/.autorepoflow-private` with SHA-256 manifests;
+- private snapshots in `~/.autorepoflow-private` with SHA-256 manifests and
+  automatic raw-snapshot cleanup for zero-config scans;
 - deny-before-copy handling for `.git`, `.env*`, keys, certificates, logs, and
   generated dependency/build folders;
 - extractors for reviewed design-flow YAML, Mermaid ERD, Postman, Express

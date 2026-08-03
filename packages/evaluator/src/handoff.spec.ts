@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, parse } from "node:path";
 import { mkdtemp } from "node:fs/promises";
@@ -95,6 +95,28 @@ describe("zero-config scan and agent handoff", () => {
     expect(markdown).toContain("ARF-TEST-001");
     expect(markdown).toContain("Do not run repository commands without explicit user approval");
     expect(formatHumanReport(report)).toContain("Create a portable handoff");
+  });
+
+  it("can remove the raw snapshot while retaining the generated report", async () => {
+    const { sandbox, source } = await createSampleRepository();
+    process.env.HOME = join(sandbox, "private-home");
+    const report = await new EvaluationService().scan({
+      sourcePath: source,
+      retainSnapshot: false
+    });
+    const evaluationDirectory = join(
+      process.env.HOME,
+      ".autorepoflow-private",
+      "evaluations",
+      report.evaluationId
+    );
+
+    await expect(
+      access(join(evaluationDirectory, "snapshot"))
+    ).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(
+      readFile(join(evaluationDirectory, "report.json"), "utf8")
+    ).resolves.toContain(report.evaluationId);
   });
 
   it("rejects a filesystem root as a scan target", async () => {

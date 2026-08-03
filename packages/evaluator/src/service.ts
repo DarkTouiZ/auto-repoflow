@@ -312,6 +312,7 @@ export class EvaluationService {
     sourcePath: string;
     projectName?: string;
     mode?: "rules" | "local-ai";
+    retainSnapshot?: boolean;
   }): Promise<EvaluationReport> {
     const sourcePath = await resolveScopedRepositoryPath(input.sourcePath);
     const evaluationId = randomUUID();
@@ -326,7 +327,11 @@ export class EvaluationService {
         `Snapshot validation failed with ${validation.errors.length} error(s)`
       );
     }
-    return this.run({ evaluationId, mode: input.mode });
+    const report = await this.run({ evaluationId, mode: input.mode });
+    if (input.retainSnapshot === false) {
+      await this.purgeArtifacts(evaluationId);
+    }
+    return report;
   }
 
   async report(evaluationId: string): Promise<EvaluationReport> {

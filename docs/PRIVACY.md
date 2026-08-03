@@ -29,8 +29,12 @@ safe destination filename only, rejects secret filenames and path traversal,
 and updates the immutable manifest digest. For static screenshots, attach a
 reviewed YAML file containing screenshot hashes rather than the images.
 
-Raw snapshots can be deleted per evaluation or with the seven-day retention
-command. Reports and aggregate metrics remain available after raw deletion.
+Successful zero-config `scan` commands delete their raw snapshots by default.
+Use `--keep-snapshot` only when the filtered copy is needed for advanced local
+inspection. Advanced `eval` workflows retain raw snapshots until they are
+deleted per evaluation or by the seven-day retention command. Reports,
+manifests, privacy decisions, and aggregate metrics remain available after raw
+deletion.
 
 ## Local AI
 

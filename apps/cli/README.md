@@ -35,8 +35,15 @@ auto-repoflow scan /path/to/repository
 
 `scan` performs static evaluation against a filtered private snapshot. It does
 not run repository scripts, edit source files, call cloud AI, merge, deploy, or
-publish. Private artifacts are stored outside the scanned repository under
-`~/.autorepoflow-private`.
+publish. The raw snapshot is removed after a successful scan by default;
+privacy decisions, hashes, and the generated report remain under
+`~/.autorepoflow-private` without storing the absolute source root.
+
+Retain the filtered raw snapshot only when you need advanced local inspection:
+
+```bash
+auto-repoflow scan /path/to/repository --keep-snapshot
+```
 
 Auto-RepoFlow excludes common secrets, environment files, repository metadata,
 dependencies, build outputs, and files larger than 5 MB from snapshots. Always

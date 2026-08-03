@@ -9,6 +9,8 @@ project follows semantic versioning.
 
 - Documented the published package and public contribution workflow.
 - Added token-free npm trusted-publishing automation for future releases.
+- Successful zero-config scans now remove their filtered raw source snapshots
+  by default; `--keep-snapshot` retains them for advanced local inspection.
 
 ## [0.1.0] - 2026-08-02
 
