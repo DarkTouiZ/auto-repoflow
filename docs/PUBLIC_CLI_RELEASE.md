@@ -32,8 +32,8 @@ a provenance attestation when checked on 2026-08-03.
 
 ## One-time trusted publisher setup
 
-After `.github/workflows/publish.yml` is merged, configure the package on
-npmjs.com under **Settings → Trusted Publisher**:
+Trusted publishing was configured successfully on 2026-08-03 under npm package
+**Settings → Trusted Publisher**:
 
 - provider: GitHub Actions
 - organization or user: `DarkTouiZ`
@@ -45,6 +45,12 @@ npmjs.com under **Settings → Trusted Publisher**:
 The workflow uses GitHub OIDC and does not require an npm write token. A future
 release will generate provenance automatically when the trusted-publisher
 configuration matches.
+
+## Next release candidate
+
+- remove the filtered raw snapshot after a successful zero-config scan;
+- retain the manifest, privacy decisions, hashes, and report for auditability;
+- provide `--keep-snapshot` as an explicit opt-in for local inspection.
 
 ## Future release checklist
 
