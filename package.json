@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "doctor": "node scripts/doctor.mjs",
+    "benchmark:scan": "node scripts/benchmark-scan.mjs",
     "privacy:check": "node scripts/privacy-check.mjs",
     "world:validate": "node scripts/validate-world.mjs",
     "check": "npm run world:validate && npm run privacy:check && npm run test && npm run build"
