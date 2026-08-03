@@ -46,11 +46,14 @@ The workflow uses GitHub OIDC and does not require an npm write token. A future
 release will generate provenance automatically when the trusted-publisher
 configuration matches.
 
-## Next release candidate
+## Version 0.1.1 release candidate
 
 - remove the filtered raw snapshot after a successful zero-config scan;
 - retain the manifest, privacy decisions, hashes, and report for auditability;
 - provide `--keep-snapshot` as an explicit opt-in for local inspection.
+
+This version is prepared for review but is not published until the release
+checklist below succeeds and a maintainer approves the GitHub Release.
 
 ## Future release checklist
 
