@@ -5,10 +5,17 @@ project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-03
+
 ### Added
 
 - Added a privacy-safe repeated-scan benchmark runner and public evaluation
   protocol for reproducible presentation evidence.
+
+### Changed
+
+- Prepared the public CLI from sanitized source history so the new npm
+  provenance points to the personal `DarkTouiZ/auto-repoflow` project.
 
 ## [0.1.1] - 2026-08-03
 
@@ -31,6 +38,7 @@ project follows semantic versioning.
 - Exact known-gap identity scoring for reproducible benchmark evaluation.
 - Standalone npm package for Node.js 22 or newer.
 
-[Unreleased]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.1.0

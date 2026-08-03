@@ -10,7 +10,7 @@ import {
   formatHumanReport
 } from "@auto-repoflow/evaluator";
 
-const VERSION = "0.1.1";
+const VERSION = "0.1.2";
 const scanFormats = ["human", "json", "agent-md", "agent-json"] as const;
 type ScanFormat = (typeof scanFormats)[number];
 
