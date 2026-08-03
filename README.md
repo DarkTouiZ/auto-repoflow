@@ -1,5 +1,9 @@
 # Auto-RepoFlow
 
+[![CI](https://github.com/DarkTouiZ/auto-repoflow/actions/workflows/ci.yml/badge.svg)](https://github.com/DarkTouiZ/auto-repoflow/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/auto-repoflow.svg)](https://www.npmjs.com/package/auto-repoflow)
+[![license](https://img.shields.io/npm/l/auto-repoflow.svg)](LICENSE)
+
 Auto-RepoFlow is a local-first engineering evidence auditor and software change
 control plane. Its evaluation workflow connects design, data, API, code, tests,
 and CI evidence; its future change workflow stops after creating a draft pull
@@ -26,9 +30,17 @@ npx auto-repoflow scan . \
   --out auto-repoflow-fix-packet.md
 ```
 
-The npm package metadata and standalone runtime are implemented in this
-repository but version `0.1.0` has not been published yet. To test the same CLI
-from a checkout:
+Version `0.1.0` is available on
+[npm](https://www.npmjs.com/package/auto-repoflow) and as a
+[GitHub release](https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.1.0).
+Install the command globally if you prefer not to use `npx`:
+
+```bash
+npm install --global auto-repoflow
+auto-repoflow scan /path/to/repository
+```
+
+To run the development version from a checkout:
 
 ```bash
 npm install
@@ -172,6 +184,12 @@ an AI provider are separate policies. This POC supports local providers only.
 `EvaluationRun` terminates at `REPORT_READY`. It never creates a branch or pull
 request. `ChangeRun` is a separate future workflow whose maximum authority is
 `DRAFT_PR_CREATED`; merge and deployment are prohibited.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and pull-request
+expectations, [SECURITY.md](SECURITY.md) for private vulnerability reporting,
+and [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ## License
 

@@ -20,19 +20,44 @@ JavaScript and TypeScript repositories are the supported public-alpha target.
 Other repository types may be scanned, but their evidence coverage is not yet
 part of the compatibility promise.
 
-## Before publishing to npm
+## Release status
 
-1. Run `npm run check` from a clean checkout on Node.js 22.
-2. Run `npm pack -w auto-repoflow` and inspect the tarball contents.
-3. Install that tarball in a temporary directory and scan a separate fixture.
-4. Confirm the packet contains no source root, secret value, or bundled private
+Version `0.1.0` was published on 2026-08-02:
+
+- npm: <https://www.npmjs.com/package/auto-repoflow>
+- GitHub: <https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.1.0>
+
+The first release was published interactively. Registry metadata did not show
+a provenance attestation when checked on 2026-08-03.
+
+## One-time trusted publisher setup
+
+After `.github/workflows/publish.yml` is merged, configure the package on
+npmjs.com under **Settings → Trusted Publisher**:
+
+- provider: GitHub Actions
+- organization or user: `DarkTouiZ`
+- repository: `auto-repoflow`
+- workflow filename: `publish.yml`
+- allowed action: `npm publish`
+- environment: leave empty
+
+The workflow uses GitHub OIDC and does not require an npm write token. A future
+release will generate provenance automatically when the trusted-publisher
+configuration matches.
+
+## Future release checklist
+
+1. Update `apps/cli/package.json` and `CHANGELOG.md` in a reviewed pull request.
+2. Run `npm run check` from a clean checkout on a supported Node.js version.
+3. Run `npm pack -w auto-repoflow` and inspect the tarball contents.
+4. Install that tarball in a temporary directory and scan a separate fixture.
+5. Confirm the packet contains no source root, secret value, or private
    artifact.
-5. Confirm `npm view auto-repoflow` is still unclaimed immediately before the
-   first publish.
-6. Enable npm trusted publishing or require two-factor authentication; publish
-   version `0.1.0` with provenance.
-7. Create a GitHub release and copy the verified quick-start command into the
-   release notes.
+6. Merge the version change and create a GitHub release whose tag exactly
+   matches `v<package-version>`.
+7. Let `publish.yml` publish through OIDC, then verify the npm version,
+   provenance, and `npx auto-repoflow@<version> --version`.
 
 Publishing is intentionally a separate human-approved action.
 

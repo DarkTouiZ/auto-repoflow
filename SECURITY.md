@@ -1,5 +1,27 @@
 # Security and privacy policy
 
+## Supported versions
+
+The latest published minor release receives security fixes. Pre-release and
+development builds are supported only while their pull request is active.
+
+| Version | Supported |
+| --- | --- |
+| 0.1.x | Yes |
+
+## Reporting a vulnerability
+
+Use GitHub's
+[private vulnerability report](https://github.com/DarkTouiZ/auto-repoflow/security/advisories/new).
+Do not open a public issue for a suspected vulnerability or include private
+repository contents, credentials, or exploit details in public discussions.
+
+Include the affected version, a minimal reproduction, expected impact, and any
+safe mitigation you have already tested. Maintainers will acknowledge the
+report through the private advisory and coordinate disclosure there.
+
+## Product security boundary
+
 - Never commit credentials, `.env` files, raw run artifacts, or private target
   repository contents.
 - Local Git and a private GitHub repository are different trust boundaries.
@@ -7,5 +29,3 @@
 - Provider logs contain metadata and content hashes, not raw source context.
 - Mock-provider runs are simulations and cannot create a live pull request.
 - The workflow stops at a draft pull request; it cannot merge or deploy.
-
-Please report security issues privately to the repository maintainers.
