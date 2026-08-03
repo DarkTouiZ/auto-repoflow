@@ -30,6 +30,14 @@ Version `0.1.0` was published on 2026-08-02:
 The first release was published interactively. Registry metadata did not show
 a provenance attestation when checked on 2026-08-03.
 
+Version `0.1.1` was published through GitHub OIDC on 2026-08-03:
+
+- npm: <https://www.npmjs.com/package/auto-repoflow/v/0.1.1>
+- GitHub: <https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.1.1>
+
+The registry reports a SLSA provenance v1 attestation, registry signature, and
+the same SHA-512 integrity value as the reviewed release-candidate tarball.
+
 ## One-time trusted publisher setup
 
 Trusted publishing was configured successfully on 2026-08-03 under npm package
@@ -42,18 +50,18 @@ Trusted publishing was configured successfully on 2026-08-03 under npm package
 - allowed action: `npm publish`
 - environment: leave empty
 
-The workflow uses GitHub OIDC and does not require an npm write token. A future
-release will generate provenance automatically when the trusted-publisher
-configuration matches.
+The workflow uses GitHub OIDC and does not require an npm write token. Version
+`0.1.1` verified that the trusted-publisher configuration generates provenance
+automatically.
 
-## Version 0.1.1 release candidate
+## Version 0.1.1
 
 - remove the filtered raw snapshot after a successful zero-config scan;
 - retain the manifest, privacy decisions, hashes, and report for auditability;
 - provide `--keep-snapshot` as an explicit opt-in for local inspection.
 
-This version is prepared for review but is not published until the release
-checklist below succeeds and a maintainer approves the GitHub Release.
+The release checklist succeeded and a maintainer approved publication on
+2026-08-03.
 
 ## Future release checklist
 
@@ -85,3 +93,6 @@ additional public repositories. Report:
 For a credible poster, show the baseline manual workflow beside the
 Auto-RepoFlow-assisted workflow and retain anonymized, reproducible evaluation
 artifacts. Do not use company code or private records in the public evidence.
+Use [BENCHMARK_PROTOCOL.md](BENCHMARK_PROTOCOL.md) to generate aggregate scan
+measurements without exporting target paths, filenames, finding identities, or
+source hashes.

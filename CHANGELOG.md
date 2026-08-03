@@ -5,6 +5,11 @@ project follows semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added a privacy-safe repeated-scan benchmark runner and public evaluation
+  protocol for reproducible presentation evidence.
+
 ## [0.1.1] - 2026-08-03
 
 ### Changed

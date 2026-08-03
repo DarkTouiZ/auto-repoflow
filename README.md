@@ -178,6 +178,11 @@ missed gap IDs plus unexpected finding IDs. Schema v1 remains supported for
 legacy rule-count scoring, and the score output always declares its
 `matchMode`.
 
+For repeatable poster evidence, use the privacy-safe benchmark runner to record
+scan timing, evidence volume, exclusions, aggregate findings, repeatability,
+and optional schema-v2 precision/recall without exporting repository paths or
+finding identities. See [docs/BENCHMARK_PROTOCOL.md](docs/BENCHMARK_PROTOCOL.md).
+
 ## Privacy boundary
 
 No company source, endpoint, screenshot, schema, or absolute path belongs in a
