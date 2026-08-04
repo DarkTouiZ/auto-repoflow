@@ -40,6 +40,7 @@ reviewed public-evidence directory after checking the label and target policy.
 ## Recorded metrics
 
 - CLI version and rules-only protocol;
+- explicit `--ai off --generate-evidence none` isolation from local model state;
 - individual, minimum, median, and maximum scan duration;
 - included file count and bytes;
 - excluded file counts grouped by privacy reason;

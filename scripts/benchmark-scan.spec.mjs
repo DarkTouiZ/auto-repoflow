@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  benchmarkScanArguments,
   median,
   parseBenchmarkArgs,
   scoreKnownGapLedger
@@ -25,6 +26,21 @@ describe("privacy-safe scan benchmark", () => {
     expect(() =>
       parseBenchmarkArgs(["fixture", "--label", "private/client name"])
     ).toThrow(/--label/);
+  });
+
+  it("forces the repeatability benchmark to rules-only without drafts", () => {
+    expect(benchmarkScanArguments("/tmp/public-target", "public-target")).toEqual([
+      "scan",
+      "/tmp/public-target",
+      "--project",
+      "public-target",
+      "--format",
+      "json",
+      "--ai",
+      "off",
+      "--generate-evidence",
+      "none"
+    ]);
   });
 
   it("calculates a median for odd and even samples", () => {
