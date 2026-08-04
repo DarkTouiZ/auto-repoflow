@@ -2,15 +2,27 @@
 
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
 import {
+  DEFAULT_AUTOMATION_POLICY,
   EvaluationService,
+  approveEvidenceDraft,
   createAgentFixPacket,
+  createCompatibleReport,
+  exportEvidenceDrafts,
+  exportLocalMetrics,
   formatAgentFixPacketMarkdown,
-  formatHumanReport
+  formatHumanReport,
+  listEvidenceDrafts,
+  loadAutomationPolicy,
+  summarizeLocalMetrics,
+  validateEvidenceDraftFile,
+  type AutomationPolicy
 } from "@auto-repoflow/evaluator";
+import type { AiProviderName, AiRequestMode } from "@auto-repoflow/domain";
 
-const VERSION = "0.1.2";
+const VERSION = "0.2.0";
 const scanFormats = ["human", "json", "agent-md", "agent-json"] as const;
 type ScanFormat = (typeof scanFormats)[number];
 
@@ -18,6 +30,7 @@ function parseArguments(values: string[]): {
   flags: Map<string, string>;
   positionals: string[];
 } {
+  const booleanFlags = new Set(["keep-snapshot", "allow-cloud-metadata"]);
   const flags = new Map<string, string>();
   const positionals: string[] = [];
   for (let index = 0; index < values.length; index += 1) {
@@ -29,6 +42,11 @@ function parseArguments(values: string[]): {
     const equals = value.indexOf("=");
     if (equals > 2) {
       flags.set(value.slice(2, equals), value.slice(equals + 1));
+      continue;
+    }
+    const flagName = value.slice(2);
+    if (booleanFlags.has(flagName)) {
+      flags.set(flagName, "true");
       continue;
     }
     const next = values[index + 1];
@@ -58,6 +76,13 @@ function optionalFlag(
   return requireFlag(values, name);
 }
 
+function absolutePolicyPath(value: string): string {
+  if (!isAbsolute(value)) {
+    throw new Error("--policy must be an absolute private file path");
+  }
+  return value;
+}
+
 function printHelp(): void {
   console.log(`Auto-RepoFlow ${VERSION}
 
@@ -69,12 +94,21 @@ Quick start:
 Scan options:
   --project <label>     Private project label (defaults to directory name)
   --format <format>     human | json | agent-md | agent-json
+  --compat <version>    v1 | v2 packet schema (default: v2)
   --out <file>          Write the selected output to a file
-  --mode <mode>         rules | local-ai (default: rules)
+  --ai <mode>           auto | off | local | cloud (default: auto)
+  --provider <name>     ollama | openai | anthropic | google
+  --model <id>          Explicit provider model; models are never auto-pulled
+  --policy <file>       Absolute private automation policy path
+  --allow-cloud-metadata  Required consent flag for cloud metadata egress
+  --generate-evidence <mode>  none | missing | all (default: missing)
+  --mode <mode>         Deprecated: rules | local-ai
   --keep-snapshot       Retain the filtered raw snapshot after a successful scan
 
 Safe default:
-  scan creates a filtered private snapshot and performs static evaluation only.
+  scan creates a filtered private snapshot and deterministic rules report.
+  auto probes only configured loopback Ollama and otherwise falls back to rules.
+  Cloud AI never runs unless policy and --allow-cloud-metadata both allow it.
   It removes the raw snapshot after a successful scan unless --keep-snapshot is set.
   It does not run repository scripts, edit source files, call cloud AI, merge, or deploy.
 
@@ -89,6 +123,15 @@ Advanced evaluation workflow:
   eval export-public --id <evaluation-id>
   eval purge --id <evaluation-id>
   eval purge-expired [--days 7]
+
+Headless evidence workflow:
+  evidence list --id <evaluation-id>
+  evidence validate --file <canonical-draft.json>
+  evidence approve --id <evaluation-id> --review-manifest <yaml-or-json>
+  evidence export --id <evaluation-id> --to <directory> --policy <file>
+  purge [--policy <file>]  Apply private snapshot/report retention policy
+  metrics summary
+  metrics export --to <file>  Export anonymized local aggregates only
 
 Other:
   doctor               Check the local runtime
@@ -108,11 +151,14 @@ function scanFormat(value: string | undefined): ScanFormat {
 
 function renderScanOutput(
   format: ScanFormat,
-  report: Awaited<ReturnType<EvaluationService["scan"]>>
+  report: Awaited<ReturnType<EvaluationService["scan"]>>,
+  compat: "v1" | "v2"
 ): string {
   if (format === "human") return formatHumanReport(report);
-  if (format === "json") return `${JSON.stringify(report, null, 2)}\n`;
-  const packet = createAgentFixPacket(report);
+  if (format === "json") {
+    return `${JSON.stringify(createCompatibleReport(report, compat), null, 2)}\n`;
+  }
+  const packet = createAgentFixPacket(report, { compat });
   if (format === "agent-md") return formatAgentFixPacketMarkdown(packet);
   return `${JSON.stringify(packet, null, 2)}\n`;
 }
@@ -181,7 +227,14 @@ async function runScan(args: string[]): Promise<void> {
   const supportedFlags = new Set([
     "project",
     "format",
+    "compat",
     "out",
+    "ai",
+    "provider",
+    "model",
+    "policy",
+    "allow-cloud-metadata",
+    "generate-evidence",
     "mode",
     "keep-snapshot"
   ]);
@@ -196,24 +249,240 @@ async function runScan(args: string[]): Promise<void> {
   if (positionals.length > 1) {
     throw new Error("scan accepts at most one repository path");
   }
-  const mode = optionalFlag(flags, "mode") ?? "rules";
-  if (mode !== "rules" && mode !== "local-ai") {
+  const legacyMode = optionalFlag(flags, "mode");
+  if (legacyMode && legacyMode !== "rules" && legacyMode !== "local-ai") {
     throw new Error("--mode must be rules or local-ai");
+  }
+  if (legacyMode && flags.has("ai")) {
+    throw new Error("Use either --ai or deprecated --mode, not both");
+  }
+  let requestedMode = (optionalFlag(flags, "ai") ?? "auto") as AiRequestMode;
+  if (!["auto", "off", "local", "cloud"].includes(requestedMode)) {
+    throw new Error("--ai must be auto, off, local, or cloud");
+  }
+  if (legacyMode) {
+    console.error(
+      "WARN --mode is deprecated and will be removed after the 0.2.x line; use --ai"
+    );
+    requestedMode = legacyMode === "rules" ? "off" : "local";
+  }
+  const legacyProviderEnvironment = process.env.ARF_AI_PROVIDER?.trim();
+  if (!legacyMode && !flags.has("ai") && legacyProviderEnvironment) {
+    if (!["mock", "ollama"].includes(legacyProviderEnvironment)) {
+      throw new Error(
+        "Legacy ARF_AI_PROVIDER supports only mock or ollama; cloud requires explicit CLI consent"
+      );
+    }
+    console.error(
+      "WARN ARF_AI_PROVIDER is deprecated and will be removed after the 0.2.x line; use --ai and --provider"
+    );
+    requestedMode = legacyProviderEnvironment === "mock" ? "off" : "local";
+  }
+  if (!flags.has("model") && process.env.ARF_OLLAMA_MODEL) {
+    console.error(
+      "WARN ARF_OLLAMA_MODEL is deprecated and will be removed after the 0.2.x line; use --model or a private policy"
+    );
+  }
+  const providerText = optionalFlag(flags, "provider");
+  if (
+    providerText &&
+    !["ollama", "openai", "anthropic", "google"].includes(providerText)
+  ) {
+    throw new Error(
+      "--provider must be ollama, openai, anthropic, or google"
+    );
+  }
+  const provider = providerText as AiProviderName | undefined;
+  if (requestedMode === "off" && (provider || flags.has("model"))) {
+    throw new Error("--ai off cannot be combined with --provider or --model");
+  }
+  if (
+    ["auto", "local"].includes(requestedMode) &&
+    provider &&
+    provider !== "ollama"
+  ) {
+    throw new Error(`${requestedMode} AI mode supports only Ollama`);
+  }
+  if (requestedMode === "cloud" && (!provider || provider === "ollama")) {
+    throw new Error("--ai cloud requires --provider openai, anthropic, or google");
+  }
+  const allowCloudValue = flags.get("allow-cloud-metadata");
+  if (allowCloudValue !== undefined && allowCloudValue !== "true") {
+    throw new Error("--allow-cloud-metadata does not accept a value");
+  }
+  if (allowCloudValue === "true" && requestedMode !== "cloud") {
+    throw new Error("--allow-cloud-metadata is valid only with --ai cloud");
+  }
+  const policyPath = optionalFlag(flags, "policy");
+  if (requestedMode === "cloud" && !policyPath) {
+    throw new Error("--ai cloud requires an absolute private --policy file");
+  }
+  const policy: AutomationPolicy = policyPath
+    ? await loadAutomationPolicy(absolutePolicyPath(policyPath))
+    : DEFAULT_AUTOMATION_POLICY;
+  const generateEvidence =
+    optionalFlag(flags, "generate-evidence") ??
+    (policy.evidence.generateMissing ? "missing" : "none");
+  if (!["none", "missing", "all"].includes(generateEvidence)) {
+    throw new Error("--generate-evidence must be none, missing, or all");
   }
   const keepSnapshotValue = flags.get("keep-snapshot");
   if (keepSnapshotValue !== undefined && keepSnapshotValue !== "true") {
     throw new Error("--keep-snapshot does not accept a value");
   }
+  const compat = optionalFlag(flags, "compat") ?? "v2";
+  if (compat !== "v1" && compat !== "v2") {
+    throw new Error("--compat must be v1 or v2");
+  }
   const report = await new EvaluationService().scan({
     sourcePath: resolve(positionals[0] ?? "."),
     projectName: optionalFlag(flags, "project"),
-    mode,
-    retainSnapshot: keepSnapshotValue === "true"
+    retainSnapshot: keepSnapshotValue === "true",
+    ai: {
+      requestedMode,
+      provider,
+      model: optionalFlag(flags, "model"),
+      policy,
+      allowCloudMetadata: allowCloudValue === "true",
+      onEgressSummary: (summary) => {
+        console.error(
+          `Cloud metadata egress: stage=${summary.stage} provider=${summary.provider} candidates=${summary.candidateCount} fields=${summary.fields.join(",")} payload_sha256=${summary.payloadSha256}`
+        );
+      }
+    },
+    generateEvidence: generateEvidence as "none" | "missing" | "all"
   });
   await emitOutput(
-    renderScanOutput(scanFormat(optionalFlag(flags, "format")), report),
+    renderScanOutput(
+      scanFormat(optionalFlag(flags, "format")),
+      report,
+      compat
+    ),
     optionalFlag(flags, "out")
   );
+}
+
+async function runEvidence(
+  action: string | undefined,
+  args: string[]
+): Promise<void> {
+  if (!action) throw new Error("Missing evidence action");
+  const { flags, positionals } = parseArguments(args);
+  if (positionals.length > 0) {
+    throw new Error("Evidence commands accept named options only");
+  }
+  if (action === "list") {
+    const evaluationId = requireFlag(flags, "id");
+    const drafts = await listEvidenceDrafts(evaluationId);
+    console.log(
+      JSON.stringify(
+        drafts.map((draft) => ({
+          draftId: draft.draftId,
+          kind: draft.kind,
+          sha256: draft.sha256,
+          reviewStatus: draft.reviewStatus,
+          generator: draft.generator,
+          provider: draft.provider,
+          model: draft.model
+        })),
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (action === "validate") {
+    const draft = await validateEvidenceDraftFile(
+      resolve(requireFlag(flags, "file"))
+    );
+    console.log(
+      JSON.stringify(
+        {
+          valid: true,
+          draftId: draft.draftId,
+          kind: draft.kind,
+          sha256: draft.sha256,
+          reviewStatus: draft.reviewStatus
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (action === "approve") {
+    const result = await approveEvidenceDraft({
+      evaluationId: requireFlag(flags, "id"),
+      manifestPath: resolve(requireFlag(flags, "review-manifest"))
+    });
+    console.log(
+      JSON.stringify(
+        {
+          draftId: result.draft.draftId,
+          draftSha256: result.draft.sha256,
+          decision: result.review.decision,
+          reviewerId: result.review.reviewerId
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (action === "export") {
+    const policyPath = absolutePolicyPath(requireFlag(flags, "policy"));
+    const result = await exportEvidenceDrafts({
+      evaluationId: requireFlag(flags, "id"),
+      destination: resolve(requireFlag(flags, "to")),
+      policy: await loadAutomationPolicy(policyPath)
+    });
+    console.log(JSON.stringify({ exported: result }, null, 2));
+    return;
+  }
+  throw new Error(`Unknown evidence action: ${action}`);
+}
+
+async function runPurge(args: string[]): Promise<void> {
+  const { flags, positionals } = parseArguments(args);
+  if (positionals.length > 0) {
+    throw new Error("purge accepts named options only");
+  }
+  const unknownFlags = [...flags.keys()].filter((name) => name !== "policy");
+  if (unknownFlags.length > 0) {
+    throw new Error(`Unknown purge option: --${unknownFlags[0]}`);
+  }
+  const policyPath = optionalFlag(flags, "policy");
+  const policy = policyPath
+    ? await loadAutomationPolicy(absolutePolicyPath(policyPath))
+    : DEFAULT_AUTOMATION_POLICY;
+  console.log(
+    JSON.stringify(
+      await new EvaluationService().purgeExpiredArtifacts(policy),
+      null,
+      2
+    )
+  );
+}
+
+async function runMetrics(
+  action: string | undefined,
+  args: string[]
+): Promise<void> {
+  const { flags, positionals } = parseArguments(args);
+  if (positionals.length > 0) {
+    throw new Error("metrics commands accept named options only");
+  }
+  if (action === "summary") {
+    if (flags.size > 0) throw new Error("metrics summary accepts no options");
+    console.log(JSON.stringify(await summarizeLocalMetrics(), null, 2));
+    return;
+  }
+  if (action === "export") {
+    const path = await exportLocalMetrics(requireFlag(flags, "to"));
+    console.log(JSON.stringify({ path }, null, 2));
+    return;
+  }
+  throw new Error(`Unknown metrics action: ${action ?? "missing"}`);
 }
 
 async function runEvaluation(action: string | undefined, args: string[]): Promise<void> {
@@ -329,8 +598,8 @@ async function runEvaluation(action: string | undefined, args: string[]): Promis
   }
 }
 
-async function main(): Promise<void> {
-  const [command = "help", action, ...rest] = process.argv.slice(2);
+export async function runCli(argv = process.argv.slice(2)): Promise<void> {
+  const [command = "help", action, ...rest] = argv;
   if (command === "help" || command === "--help" || command === "-h") {
     printHelp();
     return;
@@ -351,10 +620,28 @@ async function main(): Promise<void> {
     await runEvaluation(action, rest);
     return;
   }
+  if (command === "evidence") {
+    await runEvidence(action, rest);
+    return;
+  }
+  if (command === "purge") {
+    await runPurge([action, ...rest].filter((value): value is string => Boolean(value)));
+    return;
+  }
+  if (command === "metrics") {
+    await runMetrics(action, rest);
+    return;
+  }
   throw new Error(`Unknown command: ${command}`);
 }
 
-main().catch((error: unknown) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exitCode = 1;
-});
+if (
+  process.argv[1] &&
+  (basename(process.argv[1]) === "auto-repoflow" ||
+    import.meta.url === pathToFileURL(resolve(process.argv[1])).href)
+) {
+  runCli().catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+  });
+}

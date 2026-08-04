@@ -1,10 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { EvaluationReport } from "@auto-repoflow/domain";
+import type {
+  AiProviderName,
+  AiRequestMode,
+  EvaluationReport
+} from "@auto-repoflow/domain";
 import {
-  createSemanticLinkProvider,
-  verifyAiSuggestions
+  buildAiEvidenceArtifacts,
+  classifyAiError,
+  createAiProvider,
+  evidenceDraftPayloadSha256,
+  executeAiEnrichment,
+  type SemanticLinkProvider
 } from "./ai.js";
 import {
   buildEvaluationReport,
@@ -13,6 +21,8 @@ import {
   type KnownGapLedger
 } from "./evaluate.js";
 import { extractArtifacts } from "./extract.js";
+import { generatePrivateEvidenceDrafts } from "./drafts.js";
+import { recordLocalMetric } from "./metrics.js";
 import {
   createPrivateSnapshot,
   getPrivateRoot,
@@ -25,10 +35,38 @@ import {
   preflightEvaluationPipelineConfig,
   resolveScopedRepositoryPath
 } from "./pipeline.js";
+import {
+  assertCloudAuthorization,
+  assertProviderAllowed,
+  DEFAULT_AUTOMATION_POLICY,
+  modelForProvider,
+  type AutomationPolicy
+} from "./policy.js";
 import { runQualityChecks } from "./quality.js";
 
 async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(await readFile(path, "utf8")) as T;
+}
+
+function assertEvaluationId(evaluationId: string): string {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      evaluationId
+    )
+  ) {
+    throw new Error("Invalid evaluation id");
+  }
+  return evaluationId;
+}
+
+export interface AiRunOptions {
+  requestedMode: AiRequestMode;
+  provider?: AiProviderName;
+  model?: string;
+  policy?: AutomationPolicy;
+  allowCloudMetadata?: boolean;
+  providerInstance?: SemanticLinkProvider;
+  onEgressSummary?: Parameters<typeof executeAiEnrichment>[0]["onEgressSummary"];
 }
 
 export class EvaluationService {
@@ -155,6 +193,7 @@ export class EvaluationService {
     projectName: string;
     evaluationId?: string;
   }) {
+    if (input.evaluationId) assertEvaluationId(input.evaluationId);
     return createPrivateSnapshot(input);
   }
 
@@ -162,7 +201,9 @@ export class EvaluationService {
     evaluationId: string;
     mode?: "rules" | "local-ai";
     scopePrefix?: string;
+    ai?: AiRunOptions;
   }): Promise<EvaluationReport> {
+    assertEvaluationId(input.evaluationId);
     const root = await getPrivateRoot();
     const directory = join(root, "evaluations", input.evaluationId);
     const manifest = await readJson<SnapshotManifest>(
@@ -183,28 +224,110 @@ export class EvaluationService {
       extracted,
       scopePrefix: input.scopePrefix
     });
-    if (input.mode === "local-ai") {
-      const provider = createSemanticLinkProvider();
-      try {
-        const suggestions = await provider.suggestLinks(report.nodes);
-        report = verifyAiSuggestions(report, suggestions);
-      } catch (error) {
-        report.findings.push({
-          id: "finding:ARF-AI-001:local-provider-unavailable",
-          ruleId: "ARF-AI-001",
-          severity: "MEDIUM",
-          status: "UNVERIFIED",
-          title: "Local AI provider did not produce verified suggestions",
-          explanation:
-            error instanceof Error
-              ? error.message
-              : "Unknown local provider error",
-          evidence: [],
-          suggestedAction:
-            "Start Ollama on loopback or use ARF_AI_PROVIDER=mock for deterministic rules-only behavior."
+    const policy = input.ai?.policy ?? DEFAULT_AUTOMATION_POLICY;
+    const requestedMode =
+      input.ai?.requestedMode ?? (input.mode === "local-ai" ? "local" : "off");
+    const providerInstance = (provider: AiProviderName): SemanticLinkProvider => {
+      const instance = input.ai?.providerInstance ?? createAiProvider(provider);
+      if (input.ai) input.ai.providerInstance = instance;
+      return instance;
+    };
+    try {
+      if (requestedMode === "auto") {
+        const model = modelForProvider(
+          policy,
+          "ollama",
+          input.ai?.model ?? process.env.ARF_OLLAMA_MODEL
+        );
+        if (!model || !policy.ai.allowedProviders.includes("ollama")) {
+          report.aiExecution = {
+            ...report.aiExecution,
+            requestedMode: "auto",
+            provider: "ollama",
+            status: "fallback",
+            fallbackUsed: true,
+            errorCode: model
+              ? "AI_PROVIDER_NOT_ALLOWED"
+              : "AI_MODEL_NOT_CONFIGURED"
+          };
+        } else {
+          report = await executeAiEnrichment({
+            report,
+            provider: providerInstance("ollama"),
+            model,
+            requestedMode: "auto",
+            policy,
+            allowFallback: true,
+            onEgressSummary: input.ai?.onEgressSummary
+          });
+        }
+      } else if (requestedMode === "local") {
+        const provider = input.ai?.provider ?? "ollama";
+        if (provider !== "ollama") {
+          throw new Error("Local AI mode supports only the Ollama provider");
+        }
+        assertProviderAllowed(policy, provider);
+        const model = modelForProvider(
+          policy,
+          provider,
+          input.ai?.model ?? process.env.ARF_OLLAMA_MODEL
+        );
+        if (!model) throw new Error("A model is required for local AI mode");
+        report = await executeAiEnrichment({
+          report,
+          provider: providerInstance(provider),
+          model,
+          requestedMode: "local",
+          policy,
+          allowFallback: false,
+          onEgressSummary: input.ai?.onEgressSummary
         });
-        report.summary.unverified += 1;
+      } else if (requestedMode === "cloud") {
+        const provider = input.ai?.provider;
+        if (!provider || provider === "ollama") {
+          throw new Error(
+            "Cloud AI mode requires openai, anthropic, or google provider"
+          );
+        }
+        const model = assertCloudAuthorization({
+          policy,
+          provider,
+          allowCloudMetadata: input.ai?.allowCloudMetadata === true,
+          model: input.ai?.model
+        });
+        report = await executeAiEnrichment({
+          report,
+          provider: providerInstance(provider),
+          model,
+          requestedMode: "cloud",
+          policy,
+          allowFallback: false,
+          onEgressSummary: input.ai?.onEgressSummary
+        });
       }
+      if (report.aiExecution.status === "used") report.mode = "local-ai";
+    } catch (error) {
+      if (report.aiExecution.status === "disabled") {
+        report.aiExecution = {
+          ...report.aiExecution,
+          requestedMode,
+          provider:
+            requestedMode === "cloud"
+              ? input.ai?.provider ?? null
+              : requestedMode === "off"
+                ? null
+                : "ollama",
+          model: input.ai?.model ?? null,
+          status: "failed",
+          errorCode: classifyAiError(error)
+        };
+      }
+      await writeFile(
+        join(directory, "report.json"),
+        `${JSON.stringify(report, null, 2)}\n`,
+        { mode: 0o600 }
+      );
+      throw error;
     }
     await writeFile(
       join(directory, "report.json"),
@@ -219,6 +342,7 @@ export class EvaluationService {
     checkedFiles: number;
     errors: string[];
   }> {
+    assertEvaluationId(evaluationId);
     const root = await getPrivateRoot();
     const directory = join(root, "evaluations", evaluationId);
     const manifest = await readJson<SnapshotManifest>(
@@ -253,6 +377,7 @@ export class EvaluationService {
     sha256: string;
     manifestSha256: string;
   }> {
+    assertEvaluationId(input.evaluationId);
     if (
       basename(input.alias) !== input.alias ||
       !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(input.alias)
@@ -313,6 +438,8 @@ export class EvaluationService {
     projectName?: string;
     mode?: "rules" | "local-ai";
     retainSnapshot?: boolean;
+    ai?: AiRunOptions;
+    generateEvidence?: "none" | "missing" | "all";
   }): Promise<EvaluationReport> {
     const sourcePath = await resolveScopedRepositoryPath(input.sourcePath);
     const evaluationId = randomUUID();
@@ -327,7 +454,120 @@ export class EvaluationService {
         `Snapshot validation failed with ${validation.errors.length} error(s)`
       );
     }
-    const report = await this.run({ evaluationId, mode: input.mode });
+    const report = await this.run({
+      evaluationId,
+      mode: input.mode,
+      ai: input.ai ?? {
+        requestedMode: "auto",
+        policy: DEFAULT_AUTOMATION_POLICY
+      }
+    });
+    let draftSeeds: Awaited<
+      ReturnType<SemanticLinkProvider["generateEvidenceDrafts"]>
+    >["drafts"] = [];
+    const requestedDraftMode = input.generateEvidence ?? "missing";
+    const aiProvider = input.ai?.providerInstance;
+    if (
+      requestedDraftMode !== "none" &&
+      report.aiExecution.status === "used" &&
+      report.aiExecution.model &&
+      aiProvider?.capabilities.evidenceDraftSeeds
+    ) {
+      const evidenceInput = {
+        artifacts: buildAiEvidenceArtifacts(
+          report,
+          aiProvider.cloud,
+          input.ai?.policy?.ai.batchSize
+            ? input.ai.policy.ai.batchSize * input.ai.policy.ai.maxBatches
+            : 250
+        ),
+        missingKinds: ["design-flow", "test-plan"] as Array<
+          "design-flow" | "test-plan"
+        >,
+        model: report.aiExecution.model,
+        timeoutMs:
+          (input.ai?.policy ?? DEFAULT_AUTOMATION_POLICY).ai.timeoutSeconds *
+          1_000,
+        retries: (input.ai?.policy ?? DEFAULT_AUTOMATION_POLICY).ai.retries
+      };
+      try {
+        if (aiProvider.cloud && aiProvider.name !== "mock") {
+          await input.ai?.onEgressSummary?.({
+            stage: "evidence-drafts",
+            provider: aiProvider.name as Exclude<AiProviderName, "ollama">,
+            candidateCount: evidenceInput.artifacts.length,
+            payloadSha256: evidenceDraftPayloadSha256(evidenceInput),
+            fields: [
+              "anonymous artifact IDs",
+              "artifact kinds",
+              "sanitized names",
+              "API locators"
+            ]
+          });
+        }
+        const generated = await aiProvider.generateEvidenceDrafts(evidenceInput);
+        draftSeeds = generated.drafts;
+        const previousUsage = report.aiExecution.usage ?? {};
+        if (generated.usage) {
+          report.aiExecution.usage = {
+            inputTokens:
+              (previousUsage.inputTokens ?? 0) +
+              (generated.usage.inputTokens ?? 0),
+            outputTokens:
+              (previousUsage.outputTokens ?? 0) +
+              (generated.usage.outputTokens ?? 0)
+          };
+        }
+        report.aiExecution.payloadSha256 = sha256(
+          `${report.aiExecution.payloadSha256 ?? ""}:${generated.payloadSha256}`
+        );
+      } catch (error) {
+        report.aiExecution.errorCode = classifyAiError(error);
+        if (report.aiExecution.requestedMode === "auto") {
+          report.edges = report.edges.filter((edge) => edge.source !== "LOCAL_AI");
+          report.aiExecution.status = "fallback";
+          report.aiExecution.fallbackUsed = true;
+          report.aiExecution.suggestionsAccepted = 0;
+          report.summary.pass = report.edges.filter(
+            (edge) => edge.status === "PASS"
+          ).length;
+          report.summary.humanReviewRequired =
+            report.edges.filter(
+              (edge) => edge.status === "HUMAN_REVIEW_REQUIRED"
+            ).length +
+            report.findings.filter(
+              (finding) => finding.status === "HUMAN_REVIEW_REQUIRED"
+            ).length;
+          report.evidenceMaturity.unresolvedReviewGates =
+            report.summary.humanReviewRequired;
+        } else {
+          report.aiExecution.status = "failed";
+          const root = await getPrivateRoot();
+          await writeFile(
+            join(root, "evaluations", evaluationId, "report.json"),
+            `${JSON.stringify(report, null, 2)}\n`,
+            { mode: 0o600 }
+          );
+          throw error;
+        }
+      }
+    }
+    const drafts = await generatePrivateEvidenceDrafts({
+      report,
+      mode: requestedDraftMode,
+      seeds: draftSeeds
+    });
+    if (drafts.length > 0) {
+      report.evidenceMaturity.generated += drafts.length;
+      report.evidenceMaturity.unresolvedReviewGates += drafts.length;
+      const root = await getPrivateRoot();
+      await writeFile(
+        join(root, "evaluations", evaluationId, "report.json"),
+        `${JSON.stringify(report, null, 2)}\n`,
+        { mode: 0o600 }
+      );
+    }
+    await recordLocalMetric(report);
     if (input.retainSnapshot === false) {
       await this.purgeArtifacts(evaluationId);
     }
@@ -335,6 +575,7 @@ export class EvaluationService {
   }
 
   async report(evaluationId: string): Promise<EvaluationReport> {
+    assertEvaluationId(evaluationId);
     const root = await getPrivateRoot();
     return readJson<EvaluationReport>(
       join(root, "evaluations", evaluationId, "report.json")
@@ -367,6 +608,7 @@ export class EvaluationService {
   }
 
   async purgeArtifacts(evaluationId: string): Promise<void> {
+    assertEvaluationId(evaluationId);
     const root = await getPrivateRoot();
     await rm(join(root, "evaluations", evaluationId, "snapshot"), {
       recursive: true,
@@ -416,5 +658,82 @@ export class EvaluationService {
       }
     }
     return { maxAgeDays, purgedEvaluationIds };
+  }
+
+  async purgeExpiredArtifacts(
+    policy: AutomationPolicy
+  ): Promise<{
+    failedSnapshotRetentionHours: number;
+    artifactRetentionDays: number;
+    rawSnapshotsPurged: string[];
+    evaluationsPurged: string[];
+  }> {
+    const root = await getPrivateRoot();
+    const evaluationsDirectory = join(root, "evaluations");
+    let entries;
+    try {
+      entries = await readdir(evaluationsDirectory, { withFileTypes: true });
+    } catch (error) {
+      if (
+        typeof error === "object" &&
+        error &&
+        "code" in error &&
+        error.code === "ENOENT"
+      ) {
+        return {
+          failedSnapshotRetentionHours:
+            policy.evidence.failedSnapshotRetentionHours,
+          artifactRetentionDays: policy.evidence.artifactRetentionDays,
+          rawSnapshotsPurged: [],
+          evaluationsPurged: []
+        };
+      }
+      throw error;
+    }
+    const failedCutoff =
+      Date.now() -
+      policy.evidence.failedSnapshotRetentionHours * 60 * 60 * 1000;
+    const artifactCutoff =
+      Date.now() - policy.evidence.artifactRetentionDays * 24 * 60 * 60 * 1000;
+    const rawSnapshotsPurged: string[] = [];
+    const evaluationsPurged: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const directory = join(evaluationsDirectory, entry.name);
+      let createdAt: number;
+      try {
+        const project = await readJson<{ createdAt: string }>(
+          join(directory, "project.json")
+        );
+        createdAt = new Date(project.createdAt).getTime();
+      } catch {
+        continue;
+      }
+      if (createdAt < artifactCutoff) {
+        await rm(directory, { recursive: true, force: true });
+        evaluationsPurged.push(entry.name);
+        continue;
+      }
+      if (createdAt >= failedCutoff) continue;
+      let failed = false;
+      try {
+        const report = await readJson<EvaluationReport>(
+          join(directory, "report.json")
+        );
+        failed = report.aiExecution.status === "failed";
+      } catch {
+        failed = true;
+      }
+      if (!failed) continue;
+      await rm(join(directory, "snapshot"), { recursive: true, force: true });
+      rawSnapshotsPurged.push(entry.name);
+    }
+    return {
+      failedSnapshotRetentionHours:
+        policy.evidence.failedSnapshotRetentionHours,
+      artifactRetentionDays: policy.evidence.artifactRetentionDays,
+      rawSnapshotsPurged,
+      evaluationsPurged
+    };
   }
 }

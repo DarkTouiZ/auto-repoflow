@@ -4,25 +4,28 @@
 [![npm](https://img.shields.io/npm/v/auto-repoflow.svg)](https://www.npmjs.com/package/auto-repoflow)
 [![license](https://img.shields.io/npm/l/auto-repoflow.svg)](LICENSE)
 
-Auto-RepoFlow is a local-first engineering evidence auditor and software change
-control plane. Its evaluation workflow connects design, data, API, code, tests,
-and CI evidence; its future change workflow stops after creating a draft pull
-request.
+Auto-RepoFlow is a privacy-first, headless engineering-evidence auditor. It
+connects requirements, design, APIs, code, tests, and CI, then produces a
+validated Fix Packet for a human or AI agent to review. Version 0.2 stops
+there: it does not edit source, invoke a coding agent, create a branch or pull
+request, merge, deploy, or publish.
 
-This repository is a clean implementation inspired by lessons from the
-SuperAI Engineer SS6 project. It does not contain company source code, private
-records, internal endpoints, or proprietary schemas.
+This public repository contains no company source code, internal endpoint,
+private record, credential, or proprietary schema.
 
-## Public CLI alpha
+## Quick start
 
-The public package is designed around one safe, zero-config command:
+Requirements: Node.js 22+ and npm.
 
 ```bash
 npx auto-repoflow scan .
 ```
 
-It can also produce a portable review packet for the AI assistant or coding
-agent that the user already trusts:
+The zero-config command is non-interactive. `--ai auto` probes only a
+configured Ollama model over HTTP loopback and falls back successfully to
+deterministic rules. It never downloads a model or falls back to cloud.
+
+Produce a packet for the assistant or coding agent you already use:
 
 ```bash
 npx auto-repoflow scan . \
@@ -30,174 +33,181 @@ npx auto-repoflow scan . \
   --out auto-repoflow-fix-packet.md
 ```
 
-Version `0.1.0` is available on
-[npm](https://www.npmjs.com/package/auto-repoflow) and as a
-[GitHub release](https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.1.0).
-Install the command globally if you prefer not to use `npx`:
+Supported outputs are `human`, `json`, `agent-md`, and `agent-json`. Reports
+and packets default to schema v2; `--compat v1` preserves the v0.1 packet
+contract throughout 0.2.x. The deprecated `--mode rules|local-ai` also remains
+available with a warning during 0.2.x.
+
+JavaScript and TypeScript are the only languages with stable v0.2 coverage.
+Other languages must be treated as partial/unsupported, not as fully covered.
+
+## AI execution
 
 ```bash
-npm install --global auto-repoflow
-auto-repoflow scan /path/to/repository
+# Rules only
+npx auto-repoflow scan . --ai off
+
+# Local Ollama; a missing server or model is an error
+npx auto-repoflow scan . --ai local --model qwen3-coder:30b
+
+# Cloud: all four controls are mandatory
+npx auto-repoflow scan . \
+  --ai cloud \
+  --provider openai \
+  --model <model-id> \
+  --policy /absolute/private/automation-policy.yaml \
+  --allow-cloud-metadata
 ```
 
-To run the development version from a checkout:
+Cloud execution requires an explicit provider/model, permission in the private
+policy, the `--allow-cloud-metadata` consent flag, and the provider key in one
+of these environment variables:
+
+- `ARF_OPENAI_API_KEY`
+- `ARF_ANTHROPIC_API_KEY`
+- `ARF_GOOGLE_API_KEY`
+
+Keys are rejected from YAML and never belong in flags, logs, reports, packets,
+the console, or request bodies. Ollama is limited to loopback; cloud adapters
+are limited to the official OpenAI, Anthropic, and Google HTTPS hosts. Custom
+provider URLs are intentionally unsupported.
+
+Cloud payloads contain only anonymous candidate IDs, relation/artifact kinds,
+sanitized names, and API locators. They exclude source bodies, filesystem
+paths, project labels, notes, logs, secrets, and keys. Before a CLI cloud call,
+Auto-RepoFlow prints the candidate count, allowed metadata fields, and payload
+SHA-256. Reports retain the provider/model, status, latency, usage when
+available, prompt/schema versions, accepted/rejected counts, and payload hash;
+raw prompts and responses are not stored.
+
+Repository text is always untrusted data. Providers have no tools or command
+execution capability. Invented or out-of-candidate links are rejected, and
+every AI-only edge is `HUMAN_REVIEW_REQUIRED`; model confidence is never a
+correctness score or a route to `PASS`.
+
+## Private policy
+
+Copy [the example policy](templates/automation-policy.example.yaml) outside
+the repository, edit the provider/model and export roots, then set its file
+mode to `0600`. Do not add credentials.
+
+The policy controls allowed providers/models, cloud metadata permission,
+timeouts and batching, evidence export roots, retention, maximum automation
+stage, and forge upload permission. v0.2 enforces `fix-packet` as the product
+boundary regardless of future policy fields.
+
+## Evidence maturity and drafts
+
+Auto-RepoFlow distinguishes:
+
+- `OBSERVED`: source, routes, tests, and CI found in the snapshot;
+- `DECLARED`: OpenAPI, Postman, Markdown, ADR, or reviewed declarations;
+- `GENERATED`: rules/AI-assisted draft material;
+- `REVIEWED`: a human-approved draft bound to its exact SHA-256.
+
+`--generate-evidence missing` is the default. Canonical JSON drafts are stored
+under `~/.autorepoflow-private/evaluations/<id>/drafts`; nothing is written to
+the scanned repository. Generated design/test plans always start as
+`draft_generated_requires_team_review` and never increase reviewed coverage.
+
+```bash
+auto-repoflow evidence list --id <evaluation-id>
+auto-repoflow evidence validate --file /private/drafts/design-flow.json
+auto-repoflow evidence approve \
+  --id <evaluation-id> \
+  --review-manifest /private/review-manifest.json
+auto-repoflow evidence export \
+  --id <evaluation-id> \
+  --to /policy/allowed/export/directory \
+  --policy /absolute/private/automation-policy.yaml
+```
+
+Approval requires an anonymous reviewer token, decision, timestamp, draft ID,
+and exact draft hash. AI identities cannot approve their own output. Export is
+restricted to policy roots and refuses to overwrite existing files.
+
+## Privacy, retention, and metrics
+
+Private snapshots exclude `.git`, `.env*`, credentials, keys, certificates,
+logs, dependencies, and build outputs before copying. Files are hashed and the
+source root is not stored in reports. A successful default scan removes its raw
+snapshot; `--keep-snapshot` retains the filtered private copy explicitly.
+
+```bash
+auto-repoflow purge --policy /absolute/private/automation-policy.yaml
+auto-repoflow metrics summary
+auto-repoflow metrics export --to /private/poster/arf-metrics.json
+```
+
+Default retention is 24 hours for failed-run snapshots and seven days for
+drafts/reports. Metrics are local aggregates without project names, paths, or
+source; there is no remote telemetry. Metric export does not overwrite files.
+Fix Packets can contain relative engineering metadata, so review them before
+sharing or committing.
+
+## Extractors and outputs
+
+The v0.2 evaluator recognizes reviewed design/test-plan YAML, OpenAPI, Postman,
+Markdown requirements, Mermaid ERDs, Express/NestJS routes, frontend
+fetch/axios calls, TypeScript symbols, Playwright/Cypress-style tests, package
+scripts, CI workflows, and World Contracts. Deterministic evidence is kept
+separate from generated or inferred readiness material.
+
+Quality commands are opt-in and drawn from a fixed local allowlist. A sanitized
+environment, bounded output, and timeout do not constitute an OS or network
+sandbox; do not claim arbitrary repository scripts are safe.
+
+## Optional loopback service and console
+
+The public npm command runs in-process and needs no API. The optional NestJS
+service exposes enqueue/status/report/events/draft-read endpoints backed by an
+atomic file queue under the private root. Set `ARF_API_TOKEN` for mutation
+endpoints and `ARF_POLICY_PATH` for the server-wide policy. Request bodies are
+strict and cannot contain API keys or arbitrary policy paths.
 
 ```bash
 npm install
 npm run build
-node apps/cli/dist/main.js scan /path/to/repository
+ARF_API_TOKEN=<local-token> npm start -w @auto-repoflow/api
+ARF_POLICY_PATH=/absolute/private/policy.yaml \
+  npm start -w @auto-repoflow/worker -- --once
 ```
 
-`scan` is static by default: it does not run repository scripts, edit files,
-call cloud AI, merge, deploy, or publish. The first public alpha focuses on
-JavaScript and TypeScript repositories and supports `human`, `json`,
-`agent-md`, and `agent-json` outputs. A successful zero-config scan removes its
-raw source snapshot automatically; use `--keep-snapshot` only when you need to
-inspect the filtered copy locally afterward.
+The Angular console is an optional read-only viewer for progress, AI trace,
+privacy decisions, evidence maturity, coverage, and benchmark results. It is
+not part of the npm CLI package and cannot start, approve, export, edit, push,
+merge, deploy, or publish.
 
-## Implemented POC
-
-- private snapshots in `~/.autorepoflow-private` with SHA-256 manifests and
-  automatic raw-snapshot cleanup for zero-config scans;
-- deny-before-copy handling for `.git`, `.env*`, keys, certificates, logs, and
-  generated dependency/build folders;
-- extractors for reviewed design-flow YAML, Mermaid ERD, Postman, Express
-  routes, TypeScript symbols, tests, package scripts, CI, and World Contracts;
-- rules and trace edges for UI → API → implementation → test evidence;
-- reproducible known-gap precision/recall scoring;
-- provider-neutral local AI linking through Mock or loopback-only Ollama;
-- CLI, NestJS REST API, and Angular evidence dashboard.
-
-No merge or deployment capability is part of the product.
-
-## Local setup
-
-Requirements: Node.js 22+, npm, Git, and Docker. Ollama and authenticated
-GitHub CLI are optional during foundation development but required for their
-respective live workflow stages.
+## Development and poster evidence
 
 ```bash
-cp .env.example .env
 npm install
 npm run doctor
 npm run check
-docker compose up -d mysql
 ```
 
-The API binds to `127.0.0.1` by default. Secrets, evaluation artifacts, bare
-mirrors, and worktrees are excluded from Git.
+For evaluation pipelines, known-gap scoring, MileMesh synthetic benchmarking,
+and human-pilot reporting, see:
 
-## Evaluate a local repository
+- [Benchmark protocol](docs/BENCHMARK_PROTOCOL.md)
+- [Mentor evaluation guide](docs/MENTOR_EVALUATION_GUIDE.md)
+- [Thai system flow guide](docs/SYSTEM_FLOW_GUIDE_TH.md)
+- [Privacy model](docs/PRIVACY.md)
 
-Use a private config outside the repository for the automated pipeline:
+Contract compatibility tests and human acceptance are separate evidence. The
+poster should compare rules and local-AI runs independently and report human
+acceptance/reclassification plus time-to-proposal. Raw worksheets stay outside
+Git.
 
-```yaml
-schemaVersion: 1
-sourcePath: /absolute/path/to/repository
-projectName: Local-Pilot
-mode: rules
-scopePrefix: /api
-evidence:
-  - filePath: /private/local/design-flow.yaml
-    alias: design-flow.yaml
-  - filePath: /private/local/test-plan.yaml
-    alias: test-plan.yaml
-quality:
-  timeoutSeconds: 300
-  checks:
-    - id: typecheck
-      tool: tsc
-      args: [--noEmit]
-    - id: unit-tests
-      tool: jest
-      args: [--config, jest.unit.config.ts, --runInBand]
-exportPublic: true
-```
-
-```bash
-npm run build
-node apps/cli/dist/main.js eval pipeline \
-  --config /absolute/private/path/evaluation-pipeline.yaml
-```
-
-The pipeline preflights paths and evidence aliases, creates a privacy-filtered
-snapshot, attaches explicit evidence, validates every manifest hash, evaluates
-the selected scope, and writes an anonymized public report. Filesystem roots,
-the home directory, relative paths, duplicate aliases, and secret evidence
-filenames are rejected before snapshotting.
-
-Quality checks use local binaries from `node_modules` and a fixed tool
-allowlist (`tsc`, `jest`, `vitest`, `eslint`, and `tslint`). They run without a
-shell, with a sanitized environment, bounded arguments, capped output, and a
-timeout. A required failure stops evaluation and public export; full logs stay
-private beside the evaluation.
-
-The individual commands remain available for inspection and repair:
-
-```bash
-npm run build
-node apps/cli/dist/main.js eval snapshot \
-  --source /absolute/path/to/repository \
-  --project Local-Pilot
-node apps/cli/dist/main.js eval validate --id <evaluation-id>
-node apps/cli/dist/main.js eval attach \
-  --id <evaluation-id> \
-  --file /private/local/design-flow.yaml \
-  --as design-flow.yaml
-node apps/cli/dist/main.js eval attach \
-  --id <evaluation-id> \
-  --file /private/local/test-plan.yaml \
-  --as test-plan.yaml
-node apps/cli/dist/main.js eval run --id <evaluation-id> --mode rules
-node apps/cli/dist/main.js eval report --id <evaluation-id>
-node apps/cli/dist/main.js eval export-public --id <evaluation-id>
-```
-
-For local semantic suggestions, set `ARF_AI_PROVIDER=ollama`; non-loopback
-provider endpoints are rejected. The default is deterministic Mock mode.
-
-`eval attach` copies only the explicitly named evidence into the private
-snapshot and records its hash. Secret filenames and directory traversal are
-rejected. Static screenshots should remain outside the snapshot; reference
-their SHA-256 hashes from a human-reviewed design-flow file instead.
-
-Draft Postman supplements and test plans are readiness evidence only. They
-produce human-review links and separate readiness metrics; they never increase
-reviewed API-spec coverage or executable-test coverage.
-
-The MileMesh repository is the public synthetic benchmark:
-
-```bash
-node apps/cli/dist/main.js eval score \
-  --id <milemesh-evaluation-id> \
-  --ledger ../milemesh-mock/benchmark/expected-findings.json
-```
-
-Known-gap ledger schema v2 scores exact stable finding identities and reports
-missed gap IDs plus unexpected finding IDs. Schema v1 remains supported for
-legacy rule-count scoring, and the score output always declares its
-`matchMode`.
-
-For repeatable poster evidence, use the privacy-safe benchmark runner to record
-scan timing, evidence volume, exclusions, aggregate findings, repeatability,
-and optional schema-v2 precision/recall without exporting repository paths or
-finding identities. See [docs/BENCHMARK_PROTOCOL.md](docs/BENCHMARK_PROTOCOL.md).
-
-## Privacy boundary
-
-No company source, endpoint, screenshot, schema, or absolute path belongs in a
-public export. Approval to push code to a forge and approval to send context to
-an AI provider are separate policies. This POC supports local providers only.
-
-`EvaluationRun` terminates at `REPORT_READY`. It never creates a branch or pull
-request. `ChangeRun` is a separate future workflow whose maximum authority is
-`DRAFT_PR_CREATED`; merge and deployment are prohibited.
+v0.3 may add an isolated private worktree, local coding-agent adapter, bounded
+verification/repair, and an explicitly approved Draft PR gate only after v0.2
+evidence is stable. Merge, deploy, package publication, and access widening
+remain prohibited.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and pull-request
-expectations, [SECURITY.md](SECURITY.md) for private vulnerability reporting,
-and [CHANGELOG.md](CHANGELOG.md) for release history.
+See [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and
+[CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

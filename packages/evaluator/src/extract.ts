@@ -82,6 +82,7 @@ function extractRoutes(
     const linePrefix = text.slice(text.lastIndexOf("\n", match.index ?? 0) + 1, match.index);
     if (linePrefix.includes("//")) continue;
     const router = match[1];
+    if (!/(?:^app$|router$)/i.test(router)) continue;
     const method = match[2].toUpperCase();
     const path = normalizeApiPath(match[3]);
     const locator = `${method} ${path}`;
@@ -106,6 +107,188 @@ function extractRoutes(
         { source: "route-registration", operation: locator, router }
       )
     );
+  }
+}
+
+function extractNestRoutes(
+  text: string,
+  file: SnapshotFile,
+  nodes: ArtifactNode[],
+  routePaths: Map<string, string>
+): void {
+  const controllerMatch = text.match(
+    /@Controller\s*\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/
+  );
+  if (!controllerMatch) return;
+  const rawPrefix = controllerMatch[1] ?? "/";
+  const prefix = normalizeApiPath(
+    rawPrefix.startsWith("/") ? rawPrefix : `/${rawPrefix}`
+  );
+  const routeRegex =
+    /@(Get|Post|Put|Patch|Delete)\s*\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)\s*(?:public\s+|private\s+|protected\s+|async\s+|static\s+)*([A-Za-z_$][\w$]*)/g;
+  for (const match of text.matchAll(routeRegex)) {
+    const method = match[1].toUpperCase();
+    const path = joinApiPath(prefix, match[2] ?? "/");
+    const locator = `${method} ${path}`;
+    const line = lineAt(text, match.index ?? 0);
+    routePaths.set(locator, stableId("API_OPERATION", locator));
+    nodes.push(
+      node("API_OPERATION", locator, locator, file, line, {
+        source: "nestjs-route",
+        method,
+        path
+      })
+    );
+    nodes.push(
+      node(
+        "CODE_SYMBOL",
+        match[3],
+        `symbol:${file.relativePath}:${match[3]}`,
+        file,
+        line,
+        { source: "typescript", operation: locator }
+      )
+    );
+  }
+}
+
+function extractFrontendApiCalls(
+  text: string,
+  file: SnapshotFile,
+  nodes: ArtifactNode[]
+): void {
+  const axiosRegex =
+    /\baxios\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
+  for (const match of text.matchAll(axiosRegex)) {
+    const method = match[1].toUpperCase();
+    const path = normalizeApiPath(match[2]);
+    const operation = `${method} ${path}`;
+    nodes.push(
+      node(
+        "UI_ACTION",
+        `Frontend request ${operation}`,
+        `frontend-call:${file.relativePath}:${operation}`,
+        file,
+        lineAt(text, match.index ?? 0),
+        {
+          source: "frontend-api-call",
+          apiOperation: operation,
+          method,
+          path,
+          reviewStatus: "draft_inferred_requires_review"
+        }
+      )
+    );
+  }
+  const fetchRegex = /\bfetch\s*\(\s*["'`]([^"'`]+)["'`]/gi;
+  for (const match of text.matchAll(fetchRegex)) {
+    const path = normalizeApiPath(match[1]);
+    const nearby = text.slice(match.index ?? 0, (match.index ?? 0) + 400);
+    const method =
+      nearby.match(/method\s*:\s*["'`](GET|POST|PUT|PATCH|DELETE)["'`]/i)?.[1]?.toUpperCase() ??
+      "GET";
+    const operation = `${method} ${path}`;
+    nodes.push(
+      node(
+        "UI_ACTION",
+        `Frontend request ${operation}`,
+        `frontend-call:${file.relativePath}:${operation}`,
+        file,
+        lineAt(text, match.index ?? 0),
+        {
+          source: "frontend-api-call",
+          apiOperation: operation,
+          method,
+          path,
+          reviewStatus: "draft_inferred_requires_review"
+        }
+      )
+    );
+  }
+}
+
+function extractOpenApi(
+  text: string,
+  file: SnapshotFile,
+  nodes: ArtifactNode[],
+  postmanPaths: Map<string, string>
+): void {
+  try {
+    const document = (file.relativePath.endsWith(".json")
+      ? JSON.parse(text)
+      : parseYaml(text)) as Record<string, unknown>;
+    if (!document.openapi && !document.swagger) return;
+    const paths = document.paths;
+    if (!paths || typeof paths !== "object") return;
+    const reviewStatus =
+      typeof document["x-auto-repoflow-review-status"] === "string"
+        ? String(document["x-auto-repoflow-review-status"])
+        : "draft_declared_requires_review";
+    for (const [rawPath, value] of Object.entries(
+      paths as Record<string, unknown>
+    )) {
+      if (!value || typeof value !== "object") continue;
+      for (const [rawMethod, operationValue] of Object.entries(
+        value as Record<string, unknown>
+      )) {
+        const method = rawMethod.toUpperCase();
+        if (!["GET", "POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+          continue;
+        }
+        const path = normalizeApiPath(rawPath);
+        const operation = `${method} ${path}`;
+        const operationRecord =
+          operationValue && typeof operationValue === "object"
+            ? (operationValue as Record<string, unknown>)
+            : {};
+        const name =
+          typeof operationRecord.summary === "string"
+            ? operationRecord.summary
+            : operation;
+        const locator = `openapi:${operation}:${name}`;
+        const id = stableId("REQUIREMENT", locator);
+        postmanPaths.set(operation, id);
+        nodes.push(
+          node("REQUIREMENT", name, locator, file, undefined, {
+            source: "openapi",
+            method,
+            path,
+            operation,
+            reviewStatus
+          })
+        );
+      }
+    }
+  } catch {
+    // Non-OpenAPI JSON/YAML files are intentionally ignored.
+  }
+}
+
+function extractMarkdownRequirements(
+  text: string,
+  file: SnapshotFile,
+  nodes: ArtifactNode[]
+): void {
+  const headingRegex =
+    /^#{1,4}\s+(.+(?:requirement|acceptance|user stor|specification).*)$/gim;
+  let count = 0;
+  for (const match of text.matchAll(headingRegex)) {
+    if (count >= 100) break;
+    const title = match[1].trim();
+    nodes.push(
+      node(
+        "REQUIREMENT",
+        title,
+        `markdown:${file.relativePath}:${title}`,
+        file,
+        lineAt(text, match.index ?? 0),
+        {
+          source: "markdown-requirement",
+          reviewStatus: "draft_declared_requires_review"
+        }
+      )
+    );
+    count += 1;
   }
 }
 
@@ -594,7 +777,7 @@ export async function extractArtifacts(
   for (const file of files) {
     if (file.bytes > 2_000_000) continue;
     const extension = extname(file.relativePath).toLowerCase();
-    if (![".ts", ".tsx", ".js", ".mjs", ".json", ".yaml", ".yml", ".mmd"].includes(extension)) {
+    if (![".ts", ".tsx", ".js", ".mjs", ".json", ".yaml", ".yml", ".mmd", ".md"].includes(extension)) {
       continue;
     }
     const text = await readFile(
@@ -604,22 +787,27 @@ export async function extractArtifacts(
     if ([".ts", ".tsx", ".js", ".mjs"].includes(extension)) {
       extractMounts(text, mounts);
       extractRoutes(text, file, nodes, routePaths);
+      extractNestRoutes(text, file, nodes, routePaths);
+      extractFrontendApiCalls(text, file, nodes);
       extractCodeSymbols(text, file, nodes);
-      if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(file.relativePath)) {
+      if (/\.(?:spec|test|cy)\.[cm]?[jt]sx?$/.test(file.relativePath)) {
         extractTests(text, file, nodes);
       }
     }
     if (extension === ".json") {
       extractPostman(text, file, nodes, postmanPaths);
+      extractOpenApi(text, file, nodes, postmanPaths);
       extractQuality(text, file, nodes);
     }
     if (extension === ".mmd") extractMermaid(text, file, nodes);
     if ([".yaml", ".yml"].includes(extension)) {
+      extractOpenApi(text, file, nodes, postmanPaths);
       extractWorld(text, file, nodes);
       extractDesignFlow(text, file, nodes);
       extractTestPlan(text, file, nodes);
       extractCi(text, file, nodes);
     }
+    if (extension === ".md") extractMarkdownRequirements(text, file, nodes);
   }
 
   const mountedNodes = applyRouterMounts(nodes, mounts);

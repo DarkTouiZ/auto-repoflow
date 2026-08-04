@@ -8,7 +8,7 @@ export class HealthController {
     return healthResponseSchema.parse({
       service: "auto-repoflow-api",
       status: "ok",
-      version: "0.1.0"
+      version: "0.2.0"
     });
   }
 }

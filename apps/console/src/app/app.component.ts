@@ -19,6 +19,7 @@ interface Finding {
 }
 
 interface Report {
+  schemaVersion: 2;
   evaluationId: string;
   projectName: string;
   status: string;
@@ -37,9 +38,34 @@ interface Report {
     sourceRootStored: boolean;
     publicExportSafe: boolean;
   };
+  aiExecution: {
+    requestedMode: "auto" | "off" | "local" | "cloud";
+    provider: "ollama" | "openai" | "anthropic" | "google" | null;
+    model: string | null;
+    status: "disabled" | "used" | "fallback" | "failed";
+    fallbackUsed: boolean;
+    batches: number;
+    suggestionsAccepted: number;
+    suggestionsRejected: number;
+    durationMs: number;
+    payloadSha256: string | null;
+  };
+  evidenceMaturity: {
+    observed: number;
+    declared: number;
+    generated: number;
+    reviewed: number;
+    unresolvedReviewGates: number;
+  };
+  languageSupport: {
+    certified: readonly ["javascript", "typescript"];
+    detected: string[];
+    status: "supported" | "partial" | "unsupported";
+  };
 }
 
 const benchmarkReport: Report = {
+  schemaVersion: 2,
   evaluationId: "synthetic-demo",
   projectName: "MileMesh Synthetic Benchmark",
   status: "REPORT_READY",
@@ -108,6 +134,30 @@ const benchmarkReport: Report = {
     excludedFiles: 7,
     sourceRootStored: false,
     publicExportSafe: true
+  },
+  aiExecution: {
+    requestedMode: "auto",
+    provider: "ollama",
+    model: null,
+    status: "fallback",
+    fallbackUsed: true,
+    batches: 0,
+    suggestionsAccepted: 0,
+    suggestionsRejected: 0,
+    durationMs: 4,
+    payloadSha256: null
+  },
+  evidenceMaturity: {
+    observed: 37,
+    declared: 10,
+    generated: 2,
+    reviewed: 0,
+    unresolvedReviewGates: 2
+  },
+  languageSupport: {
+    certified: ["javascript", "typescript"],
+    detected: ["typescript"],
+    status: "supported"
   }
 };
 
@@ -124,6 +174,7 @@ const benchmarkReport: Report = {
           <a href="#coverage">Coverage</a>
           <a href="#traceability">Trace graph</a>
           <a href="#findings">Findings</a>
+          <a href="#automation">AI & evidence</a>
           <a href="#privacy">Privacy</a>
         </nav>
         <div class="local-badge"><i></i> LOCAL ONLY</div>
@@ -154,7 +205,7 @@ const benchmarkReport: Report = {
           <dl>
             <div><dt>Included</dt><dd>{{ report().privacy.includedFiles }}</dd></div>
             <div><dt>Excluded</dt><dd>{{ report().privacy.excludedFiles }}</dd></div>
-            <div><dt>Egress</dt><dd>0</dd></div>
+            <div><dt>AI</dt><dd>{{ report().aiExecution.status }}</dd></div>
           </dl>
         </section>
 
@@ -169,6 +220,47 @@ const benchmarkReport: Report = {
             <div class="bar"><i [style.width.%]="metric.percentage"></i></div>
             <small>{{ metric.covered }} / {{ metric.total }} evidence-linked</small>
           </article>
+        </section>
+
+        <section class="panel automation-panel" id="automation">
+          <div class="panel-title">
+            <div>
+              <p class="eyebrow">READ-ONLY AUTOMATION TRACE</p>
+              <h2>AI execution and evidence maturity</h2>
+            </div>
+            <span class="mode">NO CONTROL ACTIONS</span>
+          </div>
+          <div class="automation-grid">
+            <article>
+              <small>Provider</small>
+              <strong>{{ report().aiExecution.provider || "Rules only" }}</strong>
+              <span>{{ report().aiExecution.status }} · {{ report().aiExecution.batches }} batches</span>
+            </article>
+            <article>
+              <small>Suggestions</small>
+              <strong>{{ report().aiExecution.suggestionsAccepted }} accepted</strong>
+              <span>{{ report().aiExecution.suggestionsRejected }} rejected · never auto-PASS</span>
+            </article>
+            <article>
+              <small>Observed / declared</small>
+              <strong>{{ report().evidenceMaturity.observed }} / {{ report().evidenceMaturity.declared }}</strong>
+              <span>Repository-backed evidence</span>
+            </article>
+            <article>
+              <small>Generated / reviewed</small>
+              <strong>{{ report().evidenceMaturity.generated }} / {{ report().evidenceMaturity.reviewed }}</strong>
+              <span>{{ report().evidenceMaturity.unresolvedReviewGates }} unresolved review gates</span>
+            </article>
+            <article>
+              <small>Language support</small>
+              <strong>{{ report().languageSupport.status }}</strong>
+              <span>{{ report().languageSupport.detected.join(", ") || "none detected" }}</span>
+            </article>
+          </div>
+          <p>
+            This console can only display local reports. Approval, export, source edits,
+            push, merge, deploy, and publish are unavailable here.
+          </p>
         </section>
 
         <section class="panel trace-panel" id="traceability">

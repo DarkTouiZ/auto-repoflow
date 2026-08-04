@@ -80,6 +80,54 @@ export type EvidenceStatus =
   | "UNVERIFIED"
   | "HUMAN_REVIEW_REQUIRED";
 
+export const aiRequestModes = ["auto", "off", "local", "cloud"] as const;
+export type AiRequestMode = (typeof aiRequestModes)[number];
+
+export const aiProviderNames = [
+  "ollama",
+  "openai",
+  "anthropic",
+  "google"
+] as const;
+export type AiProviderName = (typeof aiProviderNames)[number];
+
+export const evidenceMaturityLevels = [
+  "OBSERVED",
+  "DECLARED",
+  "GENERATED",
+  "REVIEWED"
+] as const;
+export type EvidenceMaturity = (typeof evidenceMaturityLevels)[number];
+
+export interface AiExecutionSummary {
+  requestedMode: AiRequestMode;
+  provider: AiProviderName | null;
+  model: string | null;
+  status: "disabled" | "used" | "fallback" | "failed";
+  fallbackUsed: boolean;
+  batches: number;
+  suggestionsReceived: number;
+  suggestionsAccepted: number;
+  suggestionsRejected: number;
+  durationMs: number;
+  promptVersion: "arf-semantic-links-v2";
+  outputSchemaVersion: 1;
+  payloadSha256: string | null;
+  usage?: {
+    inputTokens?: number;
+    outputTokens?: number;
+  };
+  errorCode?: string;
+}
+
+export interface EvidenceMaturitySummary {
+  observed: number;
+  declared: number;
+  generated: number;
+  reviewed: number;
+  unresolvedReviewGates: number;
+}
+
 export interface EvidenceRef {
   artifactId: string;
   relativePath: string;
@@ -133,7 +181,7 @@ export interface PrivacyDecision {
 }
 
 export interface EvaluationReport {
-  schemaVersion: 1;
+  schemaVersion: 2;
   evaluationId: string;
   projectName: string;
   mode: "rules" | "local-ai";
@@ -156,5 +204,12 @@ export interface EvaluationReport {
     fail: number;
     unverified: number;
     humanReviewRequired: number;
+  };
+  aiExecution: AiExecutionSummary;
+  evidenceMaturity: EvidenceMaturitySummary;
+  languageSupport: {
+    certified: readonly ["javascript", "typescript"];
+    detected: string[];
+    status: "supported" | "partial" | "unsupported";
   };
 }

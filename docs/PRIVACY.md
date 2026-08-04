@@ -32,22 +32,35 @@ reviewed YAML file containing screenshot hashes rather than the images.
 Successful zero-config `scan` commands delete their raw snapshots by default.
 Use `--keep-snapshot` only when the filtered copy is needed for advanced local
 inspection. Advanced `eval` workflows retain raw snapshots until they are
-deleted per evaluation or by the seven-day retention command. Reports,
+deleted per evaluation or by policy retention. Failed-run snapshots default
+to 24 hours; reports and drafts default to seven days. Reports,
 manifests, privacy decisions, and aggregate metrics remain available after raw
 deletion.
 
-## Local AI
+## AI provider boundary
 
-The default provider is deterministic Mock. Ollama is accepted only over plain
-HTTP on `127.0.0.1`, `localhost`, or `::1`. The prompt contains artifact
-metadata, not raw source bodies.
+The zero-config default probes only Ollama over plain HTTP on `127.0.0.1`,
+`localhost`, or `::1`, then falls back to rules. It does not pull a model.
+OpenAI, Anthropic, and Google require a provider/model pinned in a private
+policy, policy permission for cloud metadata, the command consent flag, and an
+environment API key. `auto` never selects cloud.
+
+Cloud adapters use only their official HTTPS hosts. Payloads contain anonymous
+candidate/artifact IDs, relation and artifact kinds, pseudonymized names, and
+API locators. They exclude source bodies, filesystem paths, project labels,
+notes, logs, secrets, and API keys. The CLI prints a count/field/hash egress
+summary before each cloud stage. Raw prompts and responses are not stored.
 
 AI output is schema-validated and evidence-checked:
 
 - invented node IDs are discarded;
 - invented evidence IDs are discarded;
-- low-confidence links require human review;
+- every AI-only link requires human review regardless of confidence;
 - AI never changes deterministic command or schema failures.
+
+Generated evidence remains `GENERATED` until an anonymous human review
+manifest approves the exact draft SHA-256. AI identities cannot approve their
+own output.
 
 ## Public export
 

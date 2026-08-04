@@ -24,8 +24,10 @@ anonymous `comparison_id`. Give every session a unique anonymous `session_id`.
 If only one reviewer is available, label the result exploratory and
 single-reviewer.
 
-The optional `local-ai` mode may be added later, but deterministic evidence
-verification must remain enabled.
+The optional `local-ai` mode is available in v0.2, but it must be evaluated as
+a separate comparison block with an explicit installed model. Deterministic
+evidence verification remains enabled, and AI-only edges always require human
+review.
 
 ## Session protocol
 

@@ -12,8 +12,7 @@ export const AGENT_PACKET_CONSTRAINTS = [
   "Do not merge, deploy, publish, or widen access without explicit human approval."
 ] as const;
 
-export interface AgentFixPacket {
-  schemaVersion: 1;
+interface AgentFixPacketBase {
   kind: "auto-repoflow-agent-fix-packet";
   generatedAt: string;
   evaluationId: string;
@@ -49,6 +48,25 @@ export interface AgentFixPacket {
   }>;
 }
 
+export interface AgentFixPacketV1 extends AgentFixPacketBase {
+  schemaVersion: 1;
+}
+
+export interface AgentFixPacketV2 extends AgentFixPacketBase {
+  schemaVersion: 2;
+  aiExecution: EvaluationReport["aiExecution"];
+  evidenceMaturity: EvaluationReport["evidenceMaturity"];
+  languageSupport: EvaluationReport["languageSupport"];
+  reviewGates: Array<{
+    id: string;
+    reason: string;
+    requiredDecision: "human-review";
+  }>;
+  packetAcceptanceCriteria: string[];
+}
+
+export type AgentFixPacket = AgentFixPacketV1 | AgentFixPacketV2;
+
 function declaredVerificationCommands(nodes: ArtifactNode[]): string[] {
   const commands = nodes
     .filter(
@@ -76,10 +94,10 @@ function findingPriority(finding: Finding): number {
 }
 
 export function createAgentFixPacket(
-  report: EvaluationReport
+  report: EvaluationReport,
+  options: { compat?: "v1" | "v2" } = {}
 ): AgentFixPacket {
-  return {
-    schemaVersion: 1,
+  const base: AgentFixPacketBase = {
     kind: "auto-repoflow-agent-fix-packet",
     generatedAt: report.createdAt,
     evaluationId: report.evaluationId,
@@ -122,6 +140,29 @@ export function createAgentFixPacket(
         ]
       }))
   };
+  if (options.compat === "v1") {
+    return { schemaVersion: 1, ...base };
+  }
+  return {
+    schemaVersion: 2,
+    ...base,
+    aiExecution: report.aiExecution,
+    evidenceMaturity: report.evidenceMaturity,
+    languageSupport: report.languageSupport,
+    reviewGates: report.findings
+      .filter((finding) => finding.status === "HUMAN_REVIEW_REQUIRED")
+      .map((finding) => ({
+        id: finding.id,
+        reason: finding.title,
+        requiredDecision: "human-review" as const
+      })),
+    packetAcceptanceCriteria: [
+      "No AI-only relationship is reclassified as PASS without deterministic evidence.",
+      "Generated evidence is reviewed through a hash-bound manifest before it is treated as REVIEWED.",
+      "A human reviews relative engineering metadata before sharing or committing this packet.",
+      "No source edit, command execution, merge, deploy, or publish is authorized by this packet."
+    ]
+  };
 }
 
 function singleLine(value: string): string {
@@ -149,6 +190,22 @@ export function formatAgentFixPacketMarkdown(packet: AgentFixPacket): string {
     ...packet.constraints.map((constraint) => `- ${constraint}`),
     ""
   ];
+
+  if (packet.schemaVersion === 2) {
+    lines.push(
+      "## Automation evidence",
+      "",
+      `- AI: **${packet.aiExecution.status}** (${packet.aiExecution.provider ?? "none"} / ${packet.aiExecution.model ?? "none"})`,
+      `- Evidence maturity: ${packet.evidenceMaturity.observed} observed, ${packet.evidenceMaturity.declared} declared, ${packet.evidenceMaturity.generated} generated, ${packet.evidenceMaturity.reviewed} reviewed`,
+      `- Unresolved review gates: **${packet.evidenceMaturity.unresolvedReviewGates}**`,
+      `- Language support: **${packet.languageSupport.status}** (${packet.languageSupport.detected.join(", ") || "none detected"})`,
+      "",
+      "### Packet acceptance criteria",
+      "",
+      ...packet.packetAcceptanceCriteria.map((criterion) => `- ${criterion}`),
+      ""
+    );
+  }
 
   if (packet.findings.length === 0) {
     lines.push("## Findings", "", "No evidence gaps were reported.", "");
@@ -210,6 +267,9 @@ export function formatHumanReport(report: EvaluationReport): string {
     `Status: ${report.status}  Mode: ${report.mode}`,
     `Run: ${report.evaluationId}`,
     `Evidence: ${report.privacy.includedFiles} included, ${report.privacy.excludedFiles} excluded`,
+    `AI: ${report.aiExecution.status}  Provider: ${report.aiExecution.provider ?? "none"}  Fallback: ${report.aiExecution.fallbackUsed ? "yes" : "no"}`,
+    `Maturity: ${report.evidenceMaturity.observed} observed, ${report.evidenceMaturity.declared} declared, ${report.evidenceMaturity.generated} generated, ${report.evidenceMaturity.reviewed} reviewed`,
+    `Language support: ${report.languageSupport.status} (${report.languageSupport.detected.join(", ") || "no supported source detected"})`,
     `Findings: ${report.summary.fail} fail, ${report.summary.unverified} unverified, ${report.summary.humanReviewRequired} human review`,
     ""
   ];

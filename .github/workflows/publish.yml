@@ -32,4 +32,5 @@ jobs:
           test "$RELEASE_TAG" = "v$package_version"
       - run: npm ci
       - run: npm run check
+      - run: npm run package:smoke
       - run: npm publish --workspace auto-repoflow --access public

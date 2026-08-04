@@ -80,7 +80,7 @@ describe("zero-config scan and agent handoff", () => {
     const markdown = formatAgentFixPacketMarkdown(packet);
 
     expect(packet).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       kind: "auto-repoflow-agent-fix-packet",
       project: { label: "sample-repo", sourceRootStored: false },
       verification: { requiresExplicitApproval: true }
@@ -95,6 +95,10 @@ describe("zero-config scan and agent handoff", () => {
     expect(markdown).toContain("ARF-TEST-001");
     expect(markdown).toContain("Do not run repository commands without explicit user approval");
     expect(formatHumanReport(report)).toContain("Create a portable handoff");
+
+    const compatible = createAgentFixPacket(report, { compat: "v1" });
+    expect(compatible.schemaVersion).toBe(1);
+    expect("aiExecution" in compatible).toBe(false);
   });
 
   it("can remove the raw snapshot while retaining the generated report", async () => {
@@ -123,5 +127,28 @@ describe("zero-config scan and agent handoff", () => {
     await expect(
       new EvaluationService().scan({ sourcePath: parse(process.cwd()).root })
     ).rejects.toThrow(/scoped repository directory/);
+  });
+
+  it("does not present unsupported-language coverage as complete", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-language-"));
+    process.env.HOME = join(sandbox, "private-home");
+    const source = join(sandbox, "python-repository");
+    await mkdir(source, { recursive: true });
+    await writeFile(join(source, "app.py"), "def main():\n    return True\n");
+    const report = await new EvaluationService().scan({
+      sourcePath: source,
+      ai: { requestedMode: "off" }
+    });
+    expect(report.languageSupport).toEqual({
+      certified: ["javascript", "typescript"],
+      detected: ["python"],
+      status: "unsupported"
+    });
+    expect(report.findings).toContainEqual(
+      expect.objectContaining({
+        ruleId: "ARF-LANGUAGE-001",
+        status: "UNVERIFIED"
+      })
+    );
   });
 });

@@ -1,0 +1,29 @@
+schemaVersion: 1
+
+ai:
+  allowedProviders:
+    - ollama
+  cloudMetadataAllowed: false
+  models:
+    ollama: replace-with-installed-model-id
+  timeoutSeconds: 60
+  batchSize: 50
+  maxBatches: 10
+  retries: 1
+
+evidence:
+  generateMissing: true
+  exportRoots:
+    - /private/allowed/autorepoflow-exports
+  failedSnapshotRetentionHours: 24
+  artifactRetentionDays: 7
+
+automation:
+  maxStage: fix-packet
+
+github:
+  forgeUploadAllowed: false
+
+# Keep this policy outside the repository with mode 0600.
+# Never put API keys here. Use ARF_OPENAI_API_KEY,
+# ARF_ANTHROPIC_API_KEY, or ARF_GOOGLE_API_KEY in the environment.

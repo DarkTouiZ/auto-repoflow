@@ -420,7 +420,8 @@ flowchart TD
     EXTRACT["Deterministic extraction"] --> RULES["Deterministic rules"]
     RULES --> MODE{"Evaluation mode"}
     MODE -- "rules" --> REPORT["Deterministic report"]
-    MODE -- "local-ai" --> PROVIDER["Mock or loopback-only Ollama"]
+    MODE -- "auto/local" --> PROVIDER["Loopback-only Ollama"]
+    MODE -- "cloud + policy + consent" --> CLOUD["Official OpenAI / Anthropic / Google HTTPS"]
     PROVIDER --> SCHEMA["Validate response schema"]
     SCHEMA --> IDS["Reject invented node/evidence IDs"]
     IDS --> CONFIDENCE{"Confidence sufficient?"}
@@ -550,7 +551,7 @@ repository ทุกชนิดจะได้ 100% เหมือนกัน
 - deterministic findings และ coverage
 - exact known-gap scoring schema v2
 - private detailed report และ anonymized public report
-- Mock และ loopback-only Ollama provider boundary
+- loopback-only Ollama และ explicit metadata-only cloud provider boundary
 
 ### ข้อจำกัดปัจจุบัน
 

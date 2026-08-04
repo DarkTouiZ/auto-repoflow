@@ -597,8 +597,9 @@ export function buildEvaluationReport(input: {
     (item) => item.attributes?.source === "ci-workflow"
   );
   if (
-    ciNodes.length === 0 ||
-    !ciNodes.some((item) => item.attributes?.containsContractCheck === true)
+    routePaths.size > 0 &&
+    (ciNodes.length === 0 ||
+      !ciNodes.some((item) => item.attributes?.containsContractCheck === true))
   ) {
     findings.push(
       finding(
@@ -674,9 +675,102 @@ export function buildEvaluationReport(input: {
     }
   ];
 
+  const languageByExtension: Record<string, string> = {
+    ".js": "javascript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
+    ".jsx": "javascript",
+    ".ts": "typescript",
+    ".mts": "typescript",
+    ".cts": "typescript",
+    ".tsx": "typescript",
+    ".py": "python",
+    ".go": "go",
+    ".rs": "rust",
+    ".java": "java",
+    ".kt": "kotlin",
+    ".rb": "ruby",
+    ".php": "php",
+    ".cs": "csharp",
+    ".swift": "swift"
+  };
+  const detectedLanguages = [
+    ...new Set(
+      input.manifest.files
+        .map((file) => {
+          const match = file.relativePath.toLowerCase().match(/\.[a-z0-9]+$/);
+          return match ? languageByExtension[match[0]] : undefined;
+        })
+        .filter((value): value is string => Boolean(value))
+    )
+  ].sort();
+  const hasCertifiedLanguage = detectedLanguages.some((language) =>
+    ["javascript", "typescript"].includes(language)
+  );
+  const hasUnsupportedLanguage = detectedLanguages.some(
+    (language) => !["javascript", "typescript"].includes(language)
+  );
+  const languageStatus = hasCertifiedLanguage
+    ? hasUnsupportedLanguage
+      ? "partial"
+      : "supported"
+    : "unsupported";
+  if (languageStatus !== "supported") {
+    findings.push({
+      id: `finding:ARF-LANGUAGE-001:${languageStatus}`,
+      ruleId: "ARF-LANGUAGE-001",
+      severity: "INFO",
+      status: "UNVERIFIED",
+      title:
+        languageStatus === "partial"
+          ? "Repository contains languages outside stable v0.2 coverage"
+          : "No JavaScript or TypeScript source was detected",
+      explanation:
+        "Auto-RepoFlow v0.2 certifies extraction coverage only for JavaScript and TypeScript; other language results must not be interpreted as complete coverage.",
+      evidence: [],
+      suggestedAction:
+        "Treat this report as partial/unsupported and review language-specific evidence manually."
+    });
+  }
   const statuses = [...edges.map((item) => item.status), ...findings.map((item) => item.status)];
+  const evidenceMaturity = nodes.reduce(
+    (summary, item) => {
+      const source = String(item.attributes?.source ?? "");
+      const reviewStatus = String(item.attributes?.reviewStatus ?? "");
+      if (["human_reviewed", "approved_for_synthetic_benchmark"].includes(reviewStatus)) {
+        summary.reviewed += 1;
+      } else if (source.startsWith("generated-")) {
+        summary.generated += 1;
+      } else if (
+        [
+          "postman",
+          "mermaid-erd",
+          "world-contract",
+          "test-plan",
+          "test-plan-scenario",
+          "reviewed-design-flow",
+          "markdown-requirement",
+          "openapi"
+        ].includes(source)
+      ) {
+        summary.declared += 1;
+      } else {
+        summary.observed += 1;
+      }
+      return summary;
+    },
+    {
+      observed: 0,
+      declared: 0,
+      generated: 0,
+      reviewed: 0,
+      unresolvedReviewGates: findings.filter(
+        (item) => item.status === "HUMAN_REVIEW_REQUIRED"
+      ).length
+    }
+  );
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     evaluationId: input.evaluationId,
     projectName: input.projectName,
     mode: input.mode,
@@ -703,13 +797,34 @@ export function buildEvaluationReport(input: {
       humanReviewRequired: statuses.filter(
         (item) => item === "HUMAN_REVIEW_REQUIRED"
       ).length
+    },
+    aiExecution: {
+      requestedMode: "off",
+      provider: null,
+      model: null,
+      status: "disabled",
+      fallbackUsed: false,
+      batches: 0,
+      suggestionsReceived: 0,
+      suggestionsAccepted: 0,
+      suggestionsRejected: 0,
+      durationMs: 0,
+      promptVersion: "arf-semantic-links-v2",
+      outputSchemaVersion: 1,
+      payloadSha256: null
+    },
+    evidenceMaturity,
+    languageSupport: {
+      certified: ["javascript", "typescript"],
+      detected: detectedLanguages,
+      status: languageStatus
     }
   };
 }
 
 export function createPublicReport(report: EvaluationReport) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     evaluationId: `public-${randomUUID()}`,
     project: "anonymized-project",
     mode: report.mode,
@@ -727,6 +842,14 @@ export function createPublicReport(report: EvaluationReport) {
       unverified: report.summary.unverified,
       humanReviewRequired: report.summary.humanReviewRequired
     },
+    ai: {
+      requestedMode: report.aiExecution.requestedMode,
+      provider: report.aiExecution.provider,
+      status: report.aiExecution.status,
+      fallbackUsed: report.aiExecution.fallbackUsed
+    },
+    evidenceMaturity: report.evidenceMaturity,
+    languageSupport: report.languageSupport,
     privacy: {
       companyIdentifiers: 0,
       sourcePaths: 0,
@@ -736,6 +859,23 @@ export function createPublicReport(report: EvaluationReport) {
       codeExcerpts: 0
     }
   };
+}
+
+export function createCompatibleReport(
+  report: EvaluationReport,
+  compat: "v1" | "v2"
+): EvaluationReport | Omit<
+  EvaluationReport,
+  "schemaVersion" | "aiExecution" | "evidenceMaturity" | "languageSupport"
+> & { schemaVersion: 1 } {
+  if (compat === "v2") return report;
+  const {
+    aiExecution: _aiExecution,
+    evidenceMaturity: _evidenceMaturity,
+    languageSupport: _languageSupport,
+    ...legacy
+  } = report;
+  return { ...legacy, schemaVersion: 1 };
 }
 
 export interface KnownGapLedgerV1 {

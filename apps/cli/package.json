@@ -1,6 +1,6 @@
 {
   "name": "auto-repoflow",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Privacy-first repository evidence scanner and agent handoff CLI.",
   "license": "MIT",
   "type": "module",

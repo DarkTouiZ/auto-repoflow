@@ -68,3 +68,7 @@ uses a target containing modified, untracked, or ignored files.
    a separate reviewed worksheet. The scanner cannot infer those outcomes.
 6. Never use company code, private customer data, or an unapproved repository
    in public poster evidence.
+7. Run rules and local-AI protocols as separate benchmark series with the
+   exact model, prompt version, schema version, and payload hash recorded.
+8. Treat provider contract/schema tests as compatibility evidence only; they
+   do not demonstrate finding quality or human acceptance.

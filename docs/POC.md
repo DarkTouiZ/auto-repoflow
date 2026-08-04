@@ -16,18 +16,21 @@ It answers four practical questions before implementation review:
 3. What is missing or contradictory?
 4. What evidence supports each conclusion?
 
-This is an auditor, not an autonomous merger. `EvaluationRun` stops at
-`REPORT_READY`. The separate future `ChangeRun` stops at
-`DRAFT_PR_CREATED`.
+This is an auditor, not an autonomous merger. v0.2 `EvaluationRun` stops at a
+validated Fix Packet. The v0.3 `ChangeRun` remains a separate future workflow
+with a Draft PR maximum.
 
 ## Current architecture
 
 - CLI and loopback-only NestJS API
-- Angular control-room console
+- optional read-only Angular console
 - file-backed POC storage under `~/.autorepoflow-private`
 - SHA-256 immutable snapshot manifest
 - deterministic extractors and rule engine
-- provider port for Mock and loopback-only Ollama
+- provider-neutral structured-output adapters for loopback Ollama and
+  explicit opt-in OpenAI, Anthropic, and Google
+- private hash-bound design/test-plan drafts
+- atomic file queue and worker for the optional service
 - public aggregate exporter
 - synthetic MileMesh benchmark
 
@@ -39,8 +42,9 @@ the workflow.
 
 - reviewed `design-flow.yaml`
 - Mermaid ER diagrams
-- Postman collections
-- Express router registrations and mounted prefixes
+- OpenAPI, Postman, and Markdown declarations
+- Express and NestJS route registrations and mounted prefixes
+- frontend fetch/axios calls
 - TypeScript symbols
 - Jest/Vitest test titles
 - reviewed or draft API-spec supplements
@@ -60,7 +64,7 @@ the workflow.
 | Findings with evidence references | 100% |
 | Review-preparation time reduction | ≥30% |
 | Report time | ≤5 minutes |
-| Data egress | 0 |
+| Data egress without both policy and command consent | 0 |
 | Private identifiers in public export | 0 |
 
 MileMesh supplies 10 synthetic operations and 22 known gaps. It is appropriate
@@ -71,8 +75,8 @@ until a second reviewer validates the ground truth.
 ## Known POC limits
 
 - Static PNG designs require a human-reviewed design-flow file.
-- Dynamic router construction, generated APIs, and non-Express frameworks need
-  additional adapters.
+- Dynamic router construction, generated APIs, and non-JavaScript/TypeScript
+  frameworks need additional adapters.
 - Route registration proves an implementation entry point, not a complete
   controller/service/repository chain.
 - Test linking uses names and metadata; command execution evidence is a separate
