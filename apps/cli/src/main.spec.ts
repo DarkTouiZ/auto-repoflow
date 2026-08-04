@@ -144,4 +144,10 @@ ai:
       ])
     ).rejects.toThrow(/API key is required/);
   });
+
+  it("requires an absolute private pilot config path", async () => {
+    await expect(
+      runCli(["pilot", "prepare", "--config", "relative-study.yaml"])
+    ).rejects.toThrow(/--config must be an absolute private file path/);
+  });
 });

@@ -58,6 +58,24 @@ Generated evidence does not count as reviewed. Human approval is bound to the
 exact draft SHA-256, AI identities cannot approve, export is policy-contained,
 and existing files are never overwritten by default.
 
+## Optional private usability pilot
+
+The scan command is always non-interactive. `pilot run` is a separate opt-in
+terminal recorder that automatically times a controlled usability session and
+stores raw answers only under the private root.
+
+```bash
+auto-repoflow pilot prepare --config /absolute/private/pilot.yaml
+auto-repoflow pilot validate --study pilot-1
+auto-repoflow pilot run --study pilot-1 --session 01
+auto-repoflow pilot status --study pilot-1
+auto-repoflow pilot summary --study pilot-1
+```
+
+The aggregate omits identities, paths, timestamps, finding tokens, proposals,
+and comments. It is usability evidence, not engineering-accuracy or human-
+acceptance evidence.
+
 ## Safety boundary
 
 The CLI statically evaluates a privacy-filtered private snapshot. It does not

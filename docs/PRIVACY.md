@@ -62,6 +62,22 @@ Generated evidence remains `GENERATED` until an anonymous human review
 manifest approves the exact draft SHA-256. AI identities cannot approve their
 own output.
 
+## Usability pilot boundary
+
+The optional interactive `pilot run` command is separate from non-interactive
+scanning. Study config, timestamps, reviewer/session/finding tokens, one-line
+proposal text, and comments stay under the private pilot root. A session starts
+only when its target matches the pinned Git SHA and has no tracked, untracked,
+or ignored files; the same integrity check runs again before completion.
+Assisted input must be a private file under that study root and is rejected if
+it contains an absolute user path, an email address, or common secret-shaped
+data.
+
+The pilot aggregate exports counts, ratings, timing ranges, and paired timing
+only. It excludes raw records and every token, target identifier, path,
+timestamp, proposal, and comment. Its schema explicitly disallows engineering-
+accuracy and human-acceptance claims; those require the formal reviewed pilot.
+
 ## Public export
 
 The public exporter includes aggregate counts and percentages only. It excludes

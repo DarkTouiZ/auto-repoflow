@@ -1,0 +1,24 @@
+schemaVersion: 1
+studyId: pilot-1
+publicLabel: public-usability-pilot-1
+purpose: usability
+sessions:
+  - id: "01"
+    comparisonId: comparison-1
+    reviewerToken: reviewer-a
+    mode: manual
+    targetLabel: public-target
+    targetRevision: 0123456789abcdef0123456789abcdef01234567
+    targetPath: /absolute/private/pilots/pilot-1/targets/public-target
+    allowedFindingTokens: [M01]
+    timeLimitMinutes: 12
+  - id: "02"
+    comparisonId: comparison-1
+    reviewerToken: reviewer-b
+    mode: rules
+    targetLabel: public-target
+    targetRevision: 0123456789abcdef0123456789abcdef01234567
+    targetPath: /absolute/private/pilots/pilot-1/targets/public-target
+    controlledInputPath: /absolute/private/pilots/pilot-1/inputs/rules-controlled.md
+    allowedFindingTokens: [F01, F02, F03]
+    timeLimitMinutes: 12

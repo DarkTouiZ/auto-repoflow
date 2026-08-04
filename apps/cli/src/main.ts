@@ -3,6 +3,7 @@
 import { spawnSync } from "node:child_process";
 import { mkdir, writeFile } from "node:fs/promises";
 import { basename, dirname, isAbsolute, resolve } from "node:path";
+import { createInterface } from "node:readline/promises";
 import { pathToFileURL } from "node:url";
 import {
   DEFAULT_AUTOMATION_POLICY,
@@ -16,7 +17,14 @@ import {
   formatHumanReport,
   listEvidenceDrafts,
   loadAutomationPolicy,
+  pilotStudyStatus,
+  preparePilotStudy,
+  startPilotSession,
   summarizeLocalMetrics,
+  summarizePilotStudy,
+  validatePilotSession,
+  validatePilotStudy,
+  completePilotSession,
   validateEvidenceDraftFile,
   type AutomationPolicy
 } from "@auto-repoflow/evaluator";
@@ -76,11 +84,15 @@ function optionalFlag(
   return requireFlag(values, name);
 }
 
-function absolutePolicyPath(value: string): string {
+function absolutePrivatePath(value: string, option: string): string {
   if (!isAbsolute(value)) {
-    throw new Error("--policy must be an absolute private file path");
+    throw new Error(`--${option} must be an absolute private file path`);
   }
   return value;
+}
+
+function absolutePolicyPath(value: string): string {
+  return absolutePrivatePath(value, "policy");
 }
 
 function printHelp(): void {
@@ -132,6 +144,13 @@ Headless evidence workflow:
   purge [--policy <file>]  Apply private snapshot/report retention policy
   metrics summary
   metrics export --to <file>  Export anonymized local aggregates only
+
+Private usability pilot workflow (scan remains non-interactive):
+  pilot prepare --config <absolute-private-study.yaml>
+  pilot validate --study <study-id>
+  pilot run --study <study-id> --session <session-id>
+  pilot status --study <study-id>
+  pilot summary --study <study-id> [--out <aggregate.json>]
 
 Other:
   doctor               Check the local runtime
@@ -485,6 +504,212 @@ async function runMetrics(
   throw new Error(`Unknown metrics action: ${action ?? "missing"}`);
 }
 
+async function askChoice(
+  readline: ReturnType<typeof createInterface>,
+  question: string,
+  choices: readonly string[]
+): Promise<string> {
+  while (true) {
+    const answer = (await readline.question(question)).trim().toLowerCase();
+    if (choices.includes(answer)) return answer;
+    console.log(`Choose one of: ${choices.join(", ")}`);
+  }
+}
+
+async function askLine(
+  readline: ReturnType<typeof createInterface>,
+  question: string,
+  options: { required: boolean; maxLength: number }
+): Promise<string> {
+  while (true) {
+    const answer = (await readline.question(question)).trim();
+    if (options.required && !answer) {
+      console.log("A one-line answer is required.");
+      continue;
+    }
+    if (answer.length > options.maxLength) {
+      console.log(`Answer must be ${options.maxLength} characters or fewer.`);
+      continue;
+    }
+    return answer;
+  }
+}
+
+async function runInteractivePilot(studyId: string, sessionId: string): Promise<void> {
+  if (!process.stdin.isTTY || !process.stdout.isTTY) {
+    throw new Error("pilot run requires an interactive terminal (TTY)");
+  }
+  const preview = await validatePilotSession(studyId, sessionId);
+  console.log(`\nAutoRepoFlow private usability pilot\n`);
+  console.log(`Study: ${preview.study.publicLabel}`);
+  console.log(`Session: ${preview.session.id}`);
+  console.log(`Mode: ${preview.session.mode}`);
+  console.log(`Target: ${preview.session.targetLabel}`);
+  console.log(`Pinned revision: ${preview.session.targetRevision}`);
+  console.log(`Time limit: ${preview.session.timeLimitMinutes} minutes`);
+  console.log(`\nFixed task:\n`);
+  console.log(
+    "Inspect the assigned public repository and prepare one prioritized, actionable proposal. " +
+      "State the evidence, why it matters, the smallest next action, and a testable acceptance criterion. " +
+      "Do not edit files, install dependencies, run repository commands, or use another AI assistant."
+  );
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await readline.question("Press Enter when the reviewer is ready to start...");
+    await startPilotSession(studyId, sessionId);
+    console.log(`\nRepository: ${preview.session.targetPath}`);
+    console.log(
+      `Finding/proposal tokens: ${preview.session.allowedFindingTokens.join(", ")}`
+    );
+    if (preview.controlledInput) {
+      console.log(`\n--- Controlled ${preview.session.mode} input ---\n`);
+      console.log(preview.controlledInput);
+      console.log("--- End controlled input ---\n");
+    } else {
+      console.log("\nManual session: no AutoRepoFlow findings are exposed.\n");
+    }
+    timer = setTimeout(
+      () => console.error("\nTIME LIMIT REACHED — finish the current sentence and press Enter."),
+      preview.session.timeLimitMinutes * 60_000
+    );
+    console.log("Timer started. The start timestamp was saved automatically.");
+    await readline.question(
+      "Press Enter when one proposal is ready or the time limit is reached..."
+    );
+    const finishedAt = new Date();
+    if (timer) clearTimeout(timer);
+
+    const taskCompleted =
+      (await askChoice(readline, "Was the assigned task completed? [y/n]: ", ["y", "n"])) ===
+      "y";
+    const clarity = Number(
+      await askChoice(readline, "How clear was the task/input? [1-5]: ", [
+        "1",
+        "2",
+        "3",
+        "4",
+        "5"
+      ])
+    );
+    const findingChoices = [
+      ...preview.session.allowedFindingTokens.map((token) => token.toLowerCase()),
+      "none"
+    ];
+    const findingAnswer = await askChoice(
+      readline,
+      `Most useful finding/proposal [${findingChoices.join("/")}]: `,
+      findingChoices
+    );
+    const mostUsefulFinding =
+      findingAnswer === "none" ? "none" : findingAnswer.toUpperCase();
+    const handoffReadyAnswer = await askChoice(
+      readline,
+      "Could this be handed to an engineer or AI agent? [y/n/u]: ",
+      ["y", "n", "u"]
+    );
+    const handoffReady =
+      handoffReadyAnswer === "y"
+        ? "yes"
+        : handoffReadyAnswer === "n"
+          ? "no"
+          : "unsure";
+    const proposalSummary = await askLine(
+      readline,
+      "One-line proposal/result (no names or company data): ",
+      { required: true, maxLength: 500 }
+    );
+    const comment = await askLine(
+      readline,
+      "Optional one-line usability comment (Enter to skip): ",
+      { required: false, maxLength: 500 }
+    );
+    const record = await completePilotSession({
+      studyId,
+      sessionId,
+      finishedAt,
+      responses: {
+        taskCompleted,
+        clarity,
+        mostUsefulFinding,
+        handoffReady,
+        proposalSummary,
+        comment
+      }
+    });
+    console.log(
+      `Saved privately. status=${record.status} duration=${record.durationSeconds}s`
+    );
+    if (record.status !== "completed") {
+      throw new Error("Pilot session was invalidated because the pinned target changed");
+    }
+  } finally {
+    if (timer) clearTimeout(timer);
+    readline.close();
+  }
+}
+
+async function runPilot(action: string | undefined, args: string[]): Promise<void> {
+  if (!action) throw new Error("Missing pilot action");
+  const { flags, positionals } = parseArguments(args);
+  if (positionals.length > 0) {
+    throw new Error("Pilot commands accept named options only");
+  }
+  if (action === "prepare") {
+    const unknown = [...flags.keys()].filter((name) => name !== "config");
+    if (unknown.length > 0) throw new Error(`Unknown pilot option: --${unknown[0]}`);
+    console.log(
+      JSON.stringify(
+        await preparePilotStudy(
+          absolutePrivatePath(requireFlag(flags, "config"), "config")
+        ),
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (action === "validate") {
+    const unknown = [...flags.keys()].filter((name) => name !== "study");
+    if (unknown.length > 0) throw new Error(`Unknown pilot option: --${unknown[0]}`);
+    console.log(
+      JSON.stringify(await validatePilotStudy(requireFlag(flags, "study")), null, 2)
+    );
+    return;
+  }
+  if (action === "status") {
+    const unknown = [...flags.keys()].filter((name) => name !== "study");
+    if (unknown.length > 0) throw new Error(`Unknown pilot option: --${unknown[0]}`);
+    console.log(
+      JSON.stringify(await pilotStudyStatus(requireFlag(flags, "study")), null, 2)
+    );
+    return;
+  }
+  if (action === "summary") {
+    const unknown = [...flags.keys()].filter(
+      (name) => name !== "study" && name !== "out"
+    );
+    if (unknown.length > 0) throw new Error(`Unknown pilot option: --${unknown[0]}`);
+    await emitOutput(
+      `${JSON.stringify(await summarizePilotStudy(requireFlag(flags, "study")), null, 2)}\n`,
+      optionalFlag(flags, "out")
+    );
+    return;
+  }
+  if (action === "run") {
+    const unknown = [...flags.keys()].filter(
+      (name) => name !== "study" && name !== "session"
+    );
+    if (unknown.length > 0) throw new Error(`Unknown pilot option: --${unknown[0]}`);
+    await runInteractivePilot(
+      requireFlag(flags, "study"),
+      requireFlag(flags, "session")
+    );
+    return;
+  }
+  throw new Error(`Unknown pilot action: ${action}`);
+}
+
 async function runEvaluation(action: string | undefined, args: string[]): Promise<void> {
   if (!action) throw new Error("Missing eval action");
   const { flags: values } = parseArguments(args);
@@ -630,6 +855,10 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   }
   if (command === "metrics") {
     await runMetrics(action, rest);
+    return;
+  }
+  if (command === "pilot") {
+    await runPilot(action, rest);
     return;
   }
   throw new Error(`Unknown command: ${command}`);

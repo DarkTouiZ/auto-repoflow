@@ -178,6 +178,34 @@ privacy decisions, evidence maturity, coverage, and benchmark results. It is
 not part of the npm CLI package and cannot start, approve, export, edit, push,
 merge, deploy, or publish.
 
+## Private usability pilot recorder
+
+`scan` remains fully headless and non-interactive. The separate, explicitly
+invoked `pilot run` command is an interactive terminal recorder for small local
+usability studies. It verifies a pinned pristine Git target, displays only the
+controlled session input, records start/finish timestamps automatically, and
+asks short completion, clarity, handoff-readiness, and one-line proposal
+questions.
+
+```bash
+auto-repoflow pilot prepare \
+  --config /absolute/private/usability-pilot.yaml
+auto-repoflow pilot validate --study pilot-1
+auto-repoflow pilot run --study pilot-1 --session 01
+auto-repoflow pilot status --study pilot-1
+auto-repoflow pilot summary --study pilot-1 \
+  --out /absolute/private/usability-summary.json
+```
+
+Study configuration and raw records stay beneath
+`~/.autorepoflow-private/pilots`. Controlled inputs must be private files under
+their study root and are rejected if they contain an absolute user path, email,
+or common secret-shaped value. Public summaries omit reviewer/session/finding
+tokens, target identifiers, paths, timestamps, proposal text, and comments.
+Usability summaries may support ease-of-use observations only; they explicitly
+prohibit engineering-accuracy or human-acceptance claims. Formal acceptance
+still follows the separate mentor review protocol.
+
 ## Development and poster evidence
 
 ```bash

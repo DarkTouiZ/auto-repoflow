@@ -4,6 +4,7 @@ export * from "./drafts.js";
 export * from "./policy.js";
 export * from "./queue.js";
 export * from "./metrics.js";
+export * from "./pilot.js";
 export * from "./evaluate.js";
 export * from "./service.js";
 export * from "./ai.js";

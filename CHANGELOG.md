@@ -20,6 +20,8 @@ project follows semantic versioning.
 - Added OpenAPI, NestJS, fetch/axios, Markdown, and expanded test extraction.
 - Added an optional bearer-protected loopback enqueue API, atomic file queue,
   real worker, sanitized NDJSON events, and read-only console observability.
+- Added an optional private terminal usability-pilot recorder with pinned clean
+  targets, automatic timing, controlled inputs, and identity-free aggregates.
 
 ### Security
 
@@ -27,6 +29,8 @@ project follows semantic versioning.
   secrets, and API keys; custom provider URLs remain prohibited.
 - AI-only suggestions can never become deterministic `PASS` evidence and AI
   identities cannot approve generated drafts.
+- Pilot summaries exclude raw answers, reviewer/session/finding tokens, target
+  identifiers, paths, and timestamps, and cannot claim engineering accuracy.
 
 ## [0.1.2] - 2026-08-03
 
