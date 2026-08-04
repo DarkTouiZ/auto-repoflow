@@ -42,7 +42,10 @@ reclassification, and time-to-proposal. Do not claim a human-acceptance rate or
 time saving until reviewers complete and approve that worksheet.
 
 Allowed values for `decision` are `accept`, `reject`, and `reclassify`. Reviewer
-IDs should be anonymous labels rather than names or email addresses.
+IDs should be anonymous labels rather than names or email addresses. Follow the
+[mentor evaluation guide](../../../docs/MENTOR_EVALUATION_GUIDE.md), keep the
+completed worksheet outside the repository, and generate a privacy-safe
+aggregate with `npm run review:summarize`.
 
 ## Reproduce
 

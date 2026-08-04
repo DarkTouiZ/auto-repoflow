@@ -16,3 +16,7 @@ bare-mirrors/
 *.key
 *.pem
 *.log
+
+# Completed review worksheets remain private; commit aggregate summaries only.
+**/human-review-completed*.csv
+**/human-review-private*.csv

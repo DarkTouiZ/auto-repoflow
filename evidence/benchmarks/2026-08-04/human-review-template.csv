@@ -1,1 +1,1 @@
-target_label,target_revision,reviewer_id,finding_id,rule_id,decision,reclassified_as,review_started_at,proposal_ready_at,elapsed_seconds,notes
+session_id,comparison_id,review_mode,target_label,target_revision,reviewer_id,finding_id,rule_id,decision,reclassified_as,review_started_at,proposal_ready_at,elapsed_seconds,notes
