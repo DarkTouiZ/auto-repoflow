@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "kind": "auto-repoflow-scan-benchmark",
+  "generatedAt": "2026-08-04T09:19:11.978Z",
+  "tool": {
+    "name": "auto-repoflow",
+    "version": "0.2.0"
+  },
+  "target": {
+    "label": "p-limit-public-v020-rc1",
+    "sourceRootStored": false,
+    "revisionStored": false
+  },
+  "protocol": {
+    "mode": "rules",
+    "ai": "off",
+    "generatedEvidence": "none",
+    "runs": 3,
+    "requiresCleanGitTarget": true,
+    "rawSnapshotRetention": "purged-after-success"
+  },
+  "performance": {
+    "durationMs": {
+      "samples": [77.9, 73.8, 76.4],
+      "min": 73.8,
+      "median": 76.4,
+      "max": 77.9
+    }
+  },
+  "evidence": {
+    "includedFiles": 16,
+    "includedBytes": 44369,
+    "excludedFiles": 1,
+    "exclusionsByReason": {
+      "generated_or_repository_metadata": 1
+    }
+  },
+  "findings": {
+    "total": 2,
+    "summary": {
+      "pass": 0,
+      "fail": 1,
+      "unverified": 1,
+      "humanReviewRequired": 0
+    },
+    "byRule": {
+      "ARF-QUALITY-001": 1,
+      "ARF-QUALITY-002": 1
+    }
+  },
+  "coverage": [
+    { "id": "api-spec", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "api-spec-readiness", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "implementation", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "test", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "test-plan", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "test-scenario", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "test-scenario-roadmap", "covered": 0, "total": 0, "percentage": 0 },
+    { "id": "ui-api", "covered": 0, "total": 0, "percentage": 0 }
+  ],
+  "repeatability": {
+    "evidenceStable": true,
+    "findingIdentityStable": true,
+    "summaryStable": true
+  },
+  "privacy": {
+    "absoluteSourcePathAbsent": true,
+    "rawSnapshotsRemoved": true,
+    "sourceRootStored": false
+  }
+}

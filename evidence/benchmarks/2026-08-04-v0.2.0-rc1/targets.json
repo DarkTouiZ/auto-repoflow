@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "sprintDate": "2026-08-04",
+  "releaseStage": "release-candidate",
+  "tool": {
+    "name": "auto-repoflow",
+    "version": "0.2.0",
+    "repository": "https://github.com/DarkTouiZ/auto-repoflow",
+    "revision": "ea8271dfc140fed6682be40318ef520528e7fa88",
+    "draftPullRequest": "https://github.com/DarkTouiZ/auto-repoflow/pull/9",
+    "published": false
+  },
+  "environment": {
+    "platform": "darwin-arm64",
+    "node": "22.16.0",
+    "note": "Runtime measurements are local samples and may vary by machine."
+  },
+  "protocol": {
+    "mode": "rules",
+    "ai": "off",
+    "generatedEvidence": "none",
+    "runsPerTarget": 3,
+    "cleanGitRequired": true,
+    "rawSnapshotRetention": "purged-after-success"
+  },
+  "targets": [
+    {
+      "label": "milemesh-synthetic-v020-rc1",
+      "role": "synthetic-ground-truth",
+      "repository": "https://github.com/DarkTouiZ/milemesh-mock",
+      "revision": "2bd997e88dd252472e20a01dc18768f4989fc31a",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/DarkTouiZ/milemesh-mock/blob/2bd997e88dd252472e20a01dc18768f4989fc31a/LICENSE",
+      "result": "milemesh-synthetic.json",
+      "artifactSha256": "633d45774bebe09b9ed6a74e68f2a78b3f913ef16fba2eb63fd4409c0170e506",
+      "groundTruth": {
+        "ledgerSchemaVersion": 2,
+        "ledgerSha256": "c2845ec60f7dd776f8fba323ac11a2d7215f82e1c5cc590cd797725fc67f8c2b",
+        "expectedFindingIds": 22
+      },
+      "claims": [
+        "runtime",
+        "evidence-volume",
+        "exclusions",
+        "repeatability",
+        "synthetic-precision",
+        "synthetic-recall"
+      ]
+    },
+    {
+      "label": "p-limit-public-v020-rc1",
+      "role": "public-runtime-sample",
+      "repository": "https://github.com/sindresorhus/p-limit",
+      "revision": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/sindresorhus/p-limit/blob/df476048d023ff868cd45b35ee47f5fb0ca2b25a/license",
+      "result": "p-limit-public.json",
+      "artifactSha256": "450eca0f52bb8280cfdfe62d8a6c016e0603815d3f8d0028547d0c907b6367f5",
+      "claims": ["runtime", "evidence-volume", "exclusions", "repeatability"]
+    },
+    {
+      "label": "clsx-public-v020-rc1",
+      "role": "public-runtime-sample",
+      "repository": "https://github.com/lukeed/clsx",
+      "revision": "925494cf31bcd97d3337aacd34e659e80cae7fe2",
+      "license": "MIT",
+      "licenseUrl": "https://github.com/lukeed/clsx/blob/925494cf31bcd97d3337aacd34e659e80cae7fe2/license",
+      "result": "clsx-public.json",
+      "artifactSha256": "0b22fc2b3030f6b869f72ad532a7555f2637ff28b8d519a4f94fd982617d1e6b",
+      "claims": ["runtime", "evidence-volume", "exclusions", "repeatability"]
+    }
+  ],
+  "humanAcceptance": {
+    "status": "pending-real-review",
+    "completedWorksheetTracked": false,
+    "claimsAllowed": false
+  }
+}
