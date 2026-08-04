@@ -1,0 +1,132 @@
+{
+  "schemaVersion": 1,
+  "kind": "auto-repoflow-scan-benchmark",
+  "generatedAt": "2026-08-04T03:01:48.923Z",
+  "tool": {
+    "name": "auto-repoflow",
+    "version": "0.1.2"
+  },
+  "target": {
+    "label": "milemesh-synthetic",
+    "sourceRootStored": false,
+    "revisionStored": false
+  },
+  "protocol": {
+    "mode": "rules",
+    "runs": 3,
+    "requiresCleanGitTarget": true,
+    "rawSnapshotRetention": "purged-after-success"
+  },
+  "performance": {
+    "durationMs": {
+      "samples": [
+        80.3,
+        69.5,
+        66.7
+      ],
+      "min": 66.7,
+      "median": 69.5,
+      "max": 80.3
+    }
+  },
+  "evidence": {
+    "includedFiles": 37,
+    "includedBytes": 226633,
+    "excludedFiles": 2,
+    "exclusionsByReason": {
+      "generated_or_repository_metadata": 1,
+      "secret_or_environment_file": 1
+    }
+  },
+  "findings": {
+    "total": 22,
+    "summary": {
+      "pass": 31,
+      "fail": 2,
+      "unverified": 20,
+      "humanReviewRequired": 0
+    },
+    "byRule": {
+      "ARF-ACCEPTANCE-001": 2,
+      "ARF-API-001": 2,
+      "ARF-API-002": 2,
+      "ARF-CI-001": 1,
+      "ARF-DATA-001": 2,
+      "ARF-QUALITY-002": 1,
+      "ARF-TEST-001": 10,
+      "ARF-UI-STATE-001": 2
+    }
+  },
+  "coverage": [
+    {
+      "id": "api-spec",
+      "covered": 9,
+      "total": 11,
+      "percentage": 81.8
+    },
+    {
+      "id": "api-spec-readiness",
+      "covered": 9,
+      "total": 11,
+      "percentage": 81.8
+    },
+    {
+      "id": "implementation",
+      "covered": 11,
+      "total": 11,
+      "percentage": 100
+    },
+    {
+      "id": "test",
+      "covered": 1,
+      "total": 11,
+      "percentage": 9.1
+    },
+    {
+      "id": "test-plan",
+      "covered": 0,
+      "total": 11,
+      "percentage": 0
+    },
+    {
+      "id": "test-scenario",
+      "covered": 0,
+      "total": 0,
+      "percentage": 0
+    },
+    {
+      "id": "test-scenario-roadmap",
+      "covered": 0,
+      "total": 0,
+      "percentage": 0
+    },
+    {
+      "id": "ui-api",
+      "covered": 10,
+      "total": 10,
+      "percentage": 100
+    }
+  ],
+  "repeatability": {
+    "evidenceStable": true,
+    "findingIdentityStable": true,
+    "summaryStable": true
+  },
+  "privacy": {
+    "absoluteSourcePathAbsent": true,
+    "rawSnapshotsRemoved": true,
+    "sourceRootStored": false
+  },
+  "knownGapScore": {
+    "ledgerSha256": "c2845ec60f7dd776f8fba323ac11a2d7215f82e1c5cc590cd797725fc67f8c2b",
+    "ledgerSchemaVersion": 2,
+    "matchMode": "finding-id",
+    "expected": 22,
+    "detected": 22,
+    "truePositive": 22,
+    "falsePositive": 0,
+    "falseNegative": 0,
+    "precision": 100,
+    "recall": 100
+  }
+}
