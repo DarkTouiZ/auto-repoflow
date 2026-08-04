@@ -38,6 +38,11 @@ Version `0.1.1` was published through GitHub OIDC on 2026-08-03:
 The registry reports a SLSA provenance v1 attestation, registry signature, and
 the same SHA-512 integrity value as the reviewed release-candidate tarball.
 
+Version `0.1.2` is the current release candidate. It is prepared from the
+sanitized public history so its npm provenance will point to a personal
+`DarkTouiZ/auto-repoflow` source commit. Publication remains blocked on a
+separate maintainer approval after the release checklist succeeds.
+
 ## One-time trusted publisher setup
 
 Trusted publishing was configured successfully on 2026-08-03 under npm package
@@ -62,6 +67,18 @@ automatically.
 
 The release checklist succeeded and a maintainer approved publication on
 2026-08-03.
+
+## Version 0.1.2 release candidate
+
+- include the privacy-safe repeated-scan benchmark runner and public evidence
+  protocol already reviewed on `main`;
+- issue fresh GitHub OIDC provenance anchored to the sanitized source history;
+- keep the CLI behavior and Agent Fix Packet schema backward compatible with
+  `0.1.1`.
+
+This candidate must be reviewed and merged before creating tag `v0.1.2`.
+Creating the GitHub Release and publishing to npm remain separate,
+human-approved actions.
 
 ## Future release checklist
 
