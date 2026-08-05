@@ -4,11 +4,12 @@
 [![npm](https://img.shields.io/npm/v/auto-repoflow.svg)](https://www.npmjs.com/package/auto-repoflow)
 [![license](https://img.shields.io/npm/l/auto-repoflow.svg)](LICENSE)
 
-Auto-RepoFlow is a privacy-first, headless engineering-evidence auditor. It
-connects requirements, design, APIs, code, tests, and CI, then produces a
-validated Fix Packet for a human or AI agent to review. Version 0.2 stops
-there: it does not edit source, invoke a coding agent, create a branch or pull
-request, merge, deploy, or publish.
+Auto-RepoFlow is a privacy-first, headless engineering-evidence auditor and
+guided local change verifier. It connects requirements, design, APIs, code,
+tests, and CI, then produces a validated Fix Packet for the IDE agent the user
+already controls. Version 0.3 can isolate and verify one JavaScript/TypeScript
+test-gap patch; it never invokes an agent, pushes, opens a pull request, merges,
+deploys, or publishes.
 
 This public repository contains no company source code, internal endpoint,
 private record, credential, or proprietary schema.
@@ -18,6 +19,9 @@ private record, credential, or proprietary schema.
 Requirements: Node.js 22+ and npm.
 
 ```bash
+npx auto-repoflow@0.3.0 demo
+npx auto-repoflow@0.3.0 demo --scenario delivery-status
+npx auto-repoflow@0.3.0 demo --mode handoff
 npx auto-repoflow scan .
 ```
 
@@ -35,11 +39,91 @@ npx auto-repoflow scan . \
 
 Supported outputs are `human`, `json`, `agent-md`, and `agent-json`. Reports
 and packets default to schema v2; `--compat v1` preserves the v0.1 packet
-contract throughout 0.2.x. The deprecated `--mode rules|local-ai` also remains
-available with a warning during 0.2.x.
+contract in v0.3. The deprecated `--mode rules|local-ai` remains available for
+compatibility.
 
-JavaScript and TypeScript are the only languages with stable v0.2 coverage.
+JavaScript and TypeScript are the only languages with stable v0.3 coverage.
 Other languages must be treated as partial/unsupported, not as fully covered.
+
+## Guided before/after demo
+
+The default demo is a deterministic, hash-pinned replay on the bundled MIT
+MileMesh Lite fixture. It creates a real private Git repository and worktree,
+runs baseline tests and scanning, applies the pinned test-only patch only after
+`git apply --check`, verifies it, rescans, and confirms that the original
+fixture is unchanged. Expected output is one target finding to zero and test
+linkage from 50% to 100%.
+
+Replay is labelled clearly as deterministic automation, not live AI and not
+AI-quality evidence. `--mode handoff` stops after creating the isolated
+worktree, Fix Packet, and prompt so the user can open Copilot, Claude, or Codex
+in the IDE. AutoRepoFlow never invokes those agents itself.
+
+## Verified local ChangeRun
+
+ChangeRun v0.3 supports only `ARF-TEST-001` gaps and JavaScript/TypeScript test
+files. A schema-v2 private policy and a clean Git checkout are required.
+Ignored files such as `node_modules` are allowed; tracked and untracked changes
+are rejected.
+
+```bash
+auto-repoflow change start . \
+  --policy /absolute/private/change-policy.yaml \
+  --agent-label copilot
+
+auto-repoflow change status --id <change-id>
+
+auto-repoflow change verify \
+  --id <change-id> \
+  --policy /absolute/private/change-policy.yaml \
+  --allow-verification
+
+auto-repoflow change report --id <change-id>
+auto-repoflow change cleanup --id <change-id> --confirm
+```
+
+The private worktree is pinned to the original commit. Fix Packet, prompt,
+manifest, scan reports, bounded logs, and patch stay under
+`~/.autorepoflow-private/change-runs`. Verification rejects source,
+configuration, dependency, protected-path, symlink, binary, deletion, rename,
+and oversized changes. It permits at most five test files and 200 KB, runs only
+exact policy checks with `shell:false`, and never calls `npm install`.
+
+Policy permission and `--allow-verification` form the two authorization keys.
+Failed checks can return to `REPAIR_REQUIRED` for at most two repair rounds.
+Success stops at `VERIFIED_LOCAL_PATCH`. The public outcome report contains
+only before/after counts and test linkage, verification status, patch
+size/hash, duration, attempts, and a normalized agent label; it excludes
+source, diff, logs, paths, revisions, finding IDs, and participant tokens.
+
+The sanitized verification environment and timeouts are not an operating-
+system or network sandbox.
+
+## Counterbalanced outcome trial
+
+The v0.3 trial creates four private sessions from the two bundled fixtures:
+each participant receives one assisted and one unassisted scenario in
+counterbalanced order. Both sessions for a participant must use the same IDE
+agent label. Work time excludes ChangeRun setup, scan, and verification.
+
+```bash
+auto-repoflow trial prepare --id mentor-v03
+auto-repoflow trial run \
+  --study mentor-v03 --session 01 --agent-label claude
+auto-repoflow trial review \
+  --study mentor-v03 --session 01 \
+  --reviewer-token verifier-a --decision accept
+auto-repoflow trial status --study mentor-v03
+auto-repoflow trial summary \
+  --study mentor-v03 --out /absolute/private/summary.json
+```
+
+The first `trial run` prepares the handoff and starts the work timer; rerunning
+the same command verifies and completes or requests a bounded repair. An
+independent reviewer token must differ from the participant and every decision
+is bound to the verified patch SHA-256. Public summaries expose exact counts
+and paired medians only; no statistical time-reduction claim is made from two
+participants.
 
 ## AI execution
 
@@ -91,10 +175,12 @@ Copy [the example policy](templates/automation-policy.example.yaml) outside
 the repository, edit the provider/model and export roots, then set its file
 mode to `0600`. Do not add credentials.
 
-The policy controls allowed providers/models, cloud metadata permission,
-timeouts and batching, evidence export roots, retention, maximum automation
-stage, and forge upload permission. v0.2 enforces `fix-packet` as the product
-boundary regardless of future policy fields.
+Policy v1 controls scan/AI evidence and remains scan-compatible. ChangeRun
+rejects policy v1 and requires
+[`templates/change-policy.example.yaml`](templates/change-policy.example.yaml):
+schema version 2, `change.enabled: true`, `automation.maxStage: local-patch`,
+exact checks, timeouts, and bounds. Neither policy version can authorize a
+push, pull request, merge, deploy, or publish in v0.3.
 
 ## Evidence maturity and drafts
 
@@ -147,7 +233,7 @@ sharing or committing.
 
 ## Extractors and outputs
 
-The v0.2 evaluator recognizes reviewed design/test-plan YAML, OpenAPI, Postman,
+The v0.3 evaluator recognizes reviewed design/test-plan YAML, OpenAPI, Postman,
 Markdown requirements, Mermaid ERDs, Express/NestJS routes, frontend
 fetch/axios calls, TypeScript symbols, Playwright/Cypress-style tests, package
 scripts, CI workflows, and World Contracts. Deterministic evidence is kept
@@ -227,10 +313,10 @@ poster should compare rules and local-AI runs independently and report human
 acceptance/reclassification plus time-to-proposal. Raw worksheets stay outside
 Git.
 
-v0.3 may add an isolated private worktree, local coding-agent adapter, bounded
-verification/repair, and an explicitly approved Draft PR gate only after v0.2
-evidence is stable. Merge, deploy, package publication, and access widening
-remain prohibited.
+Release evidence must report replay, assisted trials, manual outcomes, and
+human acceptance separately. The two-person trial is descriptive evidence
+only. Merge, deploy, package publication, and access widening remain separate
+human-controlled release actions.
 
 ## Contributing
 

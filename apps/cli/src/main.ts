@@ -9,6 +9,8 @@ import {
   DEFAULT_AUTOMATION_POLICY,
   EvaluationService,
   approveEvidenceDraft,
+  changeRunStatus,
+  cleanupChangeRun,
   createAgentFixPacket,
   createCompatibleReport,
   exportEvidenceDrafts,
@@ -17,20 +19,30 @@ import {
   formatHumanReport,
   listEvidenceDrafts,
   loadAutomationPolicy,
+  outcomeTrialStatus,
+  prepareOutcomeTrial,
+  readChangeOutcomeReport,
+  reviewOutcomeTrialSession,
+  runGuidedDemo,
+  runOutcomeTrialSession,
   pilotStudyStatus,
   preparePilotStudy,
   startPilotSession,
   summarizeLocalMetrics,
+  summarizeOutcomeTrial,
   summarizePilotStudy,
+  startChangeRun,
   validatePilotSession,
   validatePilotStudy,
   completePilotSession,
   validateEvidenceDraftFile,
-  type AutomationPolicy
+  verifyChangeRun,
+  type AutomationPolicy,
+  type MileMeshScenario
 } from "@auto-repoflow/evaluator";
 import type { AiProviderName, AiRequestMode } from "@auto-repoflow/domain";
 
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const scanFormats = ["human", "json", "agent-md", "agent-json"] as const;
 type ScanFormat = (typeof scanFormats)[number];
 
@@ -38,7 +50,12 @@ function parseArguments(values: string[]): {
   flags: Map<string, string>;
   positionals: string[];
 } {
-  const booleanFlags = new Set(["keep-snapshot", "allow-cloud-metadata"]);
+  const booleanFlags = new Set([
+    "keep-snapshot",
+    "allow-cloud-metadata",
+    "allow-verification",
+    "confirm"
+  ]);
   const flags = new Map<string, string>();
   const positionals: string[] = [];
   for (let index = 0; index < values.length; index += 1) {
@@ -99,6 +116,7 @@ function printHelp(): void {
   console.log(`Auto-RepoFlow ${VERSION}
 
 Quick start:
+  auto-repoflow demo [--scenario delivery-list|delivery-status] [--mode replay|handoff]
   auto-repoflow scan [path]
   auto-repoflow scan [path] --format agent-md --out fix-packet.md
   auto-repoflow scan [path] --format agent-json --out fix-packet.json
@@ -145,12 +163,26 @@ Headless evidence workflow:
   metrics summary
   metrics export --to <file>  Export anonymized local aggregates only
 
+Verified local ChangeRun (test-only in v0.3):
+  change start [path] --policy <private-policy-v2.yaml> [--agent-label <label>]
+  change status --id <change-id>
+  change verify --id <change-id> --policy <private-policy-v2.yaml> --allow-verification
+  change report --id <change-id>
+  change cleanup --id <change-id> --confirm
+
 Private usability pilot workflow (scan remains non-interactive):
   pilot prepare --config <absolute-private-study.yaml>
   pilot validate --study <study-id>
   pilot run --study <study-id> --session <session-id>
   pilot status --study <study-id>
   pilot summary --study <study-id> [--out <aggregate.json>]
+
+Counterbalanced v0.3 outcome trial:
+  trial prepare --id <study-id>
+  trial run --study <study-id> --session <session-id> --agent-label <label>
+  trial review --study <study-id> --session <session-id> --reviewer-token <token> --decision accept|reject
+  trial status --study <study-id>
+  trial summary --study <study-id> [--out <absolute-private-summary.json>]
 
 Other:
   doctor               Check the local runtime
@@ -504,6 +536,227 @@ async function runMetrics(
   throw new Error(`Unknown metrics action: ${action ?? "missing"}`);
 }
 
+function rejectUnknownFlags(
+  flags: Map<string, string>,
+  allowed: readonly string[],
+  command: string
+): void {
+  const allowedSet = new Set(allowed);
+  const unknown = [...flags.keys()].filter((name) => !allowedSet.has(name));
+  if (unknown.length > 0) {
+    throw new Error(`Unknown ${command} option: --${unknown[0]}`);
+  }
+}
+
+async function runChange(
+  action: string | undefined,
+  args: string[]
+): Promise<void> {
+  if (!action) throw new Error("Missing change action");
+  const { flags, positionals } = parseArguments(args);
+  if (action === "start") {
+    rejectUnknownFlags(
+      flags,
+      ["policy", "agent-label", "finding"],
+      "change start"
+    );
+    if (positionals.length > 1) {
+      throw new Error("change start accepts at most one repository path");
+    }
+    const policyPath = absolutePolicyPath(requireFlag(flags, "policy"));
+    console.log(
+      JSON.stringify(
+        await startChangeRun({
+          sourcePath: resolve(positionals[0] ?? "."),
+          policy: await loadAutomationPolicy(policyPath),
+          agentLabel: optionalFlag(flags, "agent-label"),
+          findingId: optionalFlag(flags, "finding")
+        }),
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (positionals.length > 0) {
+    throw new Error(`change ${action} accepts named options only`);
+  }
+  const changeId = requireFlag(flags, "id");
+  if (action === "status") {
+    rejectUnknownFlags(flags, ["id"], "change status");
+    console.log(JSON.stringify(await changeRunStatus(changeId), null, 2));
+    return;
+  }
+  if (action === "report") {
+    rejectUnknownFlags(flags, ["id"], "change report");
+    console.log(JSON.stringify(await readChangeOutcomeReport(changeId), null, 2));
+    return;
+  }
+  if (action === "verify") {
+    rejectUnknownFlags(
+      flags,
+      ["id", "policy", "allow-verification"],
+      "change verify"
+    );
+    const allowVerification = flags.get("allow-verification");
+    if (allowVerification !== "true") {
+      throw new Error("change verify requires --allow-verification");
+    }
+    const result = await verifyChangeRun({
+      changeId,
+      policy: await loadAutomationPolicy(
+        absolutePolicyPath(requireFlag(flags, "policy"))
+      ),
+      allowVerification: true
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (result.status !== "VERIFIED_LOCAL_PATCH") process.exitCode = 2;
+    return;
+  }
+  if (action === "cleanup") {
+    rejectUnknownFlags(flags, ["id", "confirm"], "change cleanup");
+    if (flags.get("confirm") !== "true") {
+      throw new Error("change cleanup requires --confirm");
+    }
+    console.log(
+      JSON.stringify(
+        await cleanupChangeRun({ changeId, confirm: true }),
+        null,
+        2
+      )
+    );
+    return;
+  }
+  throw new Error(`Unknown change action: ${action}`);
+}
+
+async function runDemo(args: string[]): Promise<void> {
+  const { flags, positionals } = parseArguments(args);
+  if (positionals.length > 0) throw new Error("demo accepts named options only");
+  rejectUnknownFlags(flags, ["scenario", "mode"], "demo");
+  const scenario = optionalFlag(flags, "scenario") ?? "delivery-list";
+  if (!["delivery-list", "delivery-status"].includes(scenario)) {
+    throw new Error("--scenario must be delivery-list or delivery-status");
+  }
+  const mode = optionalFlag(flags, "mode") ?? "replay";
+  if (mode !== "replay" && mode !== "handoff") {
+    throw new Error("--mode must be replay or handoff");
+  }
+  const result = await runGuidedDemo({
+    scenario: scenario as MileMeshScenario,
+    mode
+  });
+  console.log("AutoRepoFlow guided demo — MileMesh Lite");
+  console.log(`Scenario: ${result.scenario}`);
+  console.log(`Mode: ${result.mode}`);
+  console.log(`Evidence: ${result.evidenceClassification}`);
+  console.log("Live AI invoked: no");
+  if (result.mode === "handoff") {
+    console.log(`Status: AWAITING_AGENT`);
+    console.log(`Change ID: ${result.changeId}`);
+    console.log(`Worktree: ${result.worktreePath}`);
+    console.log(`Fix Packet: ${result.fixPacketPath}`);
+    console.log(`Agent prompt: ${result.promptPath}`);
+    return;
+  }
+  console.log(
+    `Target findings: ${result.report.before.findingCount} -> ${result.report.after.findingCount}`
+  );
+  console.log(
+    `Test linkage: ${result.report.before.testCoverage.percentage}% -> ${result.report.after.testCoverage.percentage}%`
+  );
+  console.log(
+    `Checks: ${result.report.verification.passedChecks}/${result.report.verification.requiredChecks} passed`
+  );
+  console.log(
+    `Original fixture unchanged: ${result.originalFixtureUnchanged ? "yes" : "no"}`
+  );
+  console.log(`Status: ${result.report.verification.status}`);
+}
+
+async function runOutcomeTrial(
+  action: string | undefined,
+  args: string[]
+): Promise<void> {
+  if (!action) throw new Error("Missing trial action");
+  const { flags, positionals } = parseArguments(args);
+  if (positionals.length > 0) {
+    throw new Error("trial commands accept named options only");
+  }
+  if (action === "prepare") {
+    rejectUnknownFlags(flags, ["id"], "trial prepare");
+    console.log(
+      JSON.stringify(await prepareOutcomeTrial(requireFlag(flags, "id")), null, 2)
+    );
+    return;
+  }
+  if (action === "run") {
+    rejectUnknownFlags(
+      flags,
+      ["study", "session", "agent-label"],
+      "trial run"
+    );
+    console.log(
+      JSON.stringify(
+        await runOutcomeTrialSession({
+          studyId: requireFlag(flags, "study"),
+          sessionId: requireFlag(flags, "session"),
+          agentLabel: requireFlag(flags, "agent-label")
+        }),
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (action === "review") {
+    rejectUnknownFlags(
+      flags,
+      ["study", "session", "reviewer-token", "decision"],
+      "trial review"
+    );
+    const decision = requireFlag(flags, "decision");
+    if (decision !== "accept" && decision !== "reject") {
+      throw new Error("--decision must be accept or reject");
+    }
+    console.log(
+      JSON.stringify(
+        await reviewOutcomeTrialSession({
+          studyId: requireFlag(flags, "study"),
+          sessionId: requireFlag(flags, "session"),
+          reviewerToken: requireFlag(flags, "reviewer-token"),
+          decision
+        }),
+        null,
+        2
+      )
+    );
+    return;
+  }
+  if (action === "status") {
+    rejectUnknownFlags(flags, ["study"], "trial status");
+    console.log(
+      JSON.stringify(await outcomeTrialStatus(requireFlag(flags, "study")), null, 2)
+    );
+    return;
+  }
+  if (action === "summary") {
+    rejectUnknownFlags(flags, ["study", "out"], "trial summary");
+    const contents = `${JSON.stringify(
+      await summarizeOutcomeTrial(requireFlag(flags, "study")),
+      null,
+      2
+    )}\n`;
+    const output = optionalFlag(flags, "out");
+    await emitOutput(
+      contents,
+      output ? absolutePrivatePath(output, "out") : undefined
+    );
+    return;
+  }
+  throw new Error(`Unknown trial action: ${action}`);
+}
+
 async function askChoice(
   readline: ReturnType<typeof createInterface>,
   question: string,
@@ -841,6 +1094,10 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     await runScan([action, ...rest].filter((value): value is string => Boolean(value)));
     return;
   }
+  if (command === "demo") {
+    await runDemo([action, ...rest].filter((value): value is string => Boolean(value)));
+    return;
+  }
   if (command === "eval") {
     await runEvaluation(action, rest);
     return;
@@ -857,8 +1114,16 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
     await runMetrics(action, rest);
     return;
   }
+  if (command === "change") {
+    await runChange(action, rest);
+    return;
+  }
   if (command === "pilot") {
     await runPilot(action, rest);
+    return;
+  }
+  if (command === "trial") {
+    await runOutcomeTrial(action, rest);
     return;
   }
   throw new Error(`Unknown command: ${command}`);

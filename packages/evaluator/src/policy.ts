@@ -62,7 +62,96 @@ export const automationPolicySchema = z
   })
   .strict();
 
-export type AutomationPolicy = z.infer<typeof automationPolicySchema>;
+export const changeVerificationCheckSchema = z
+  .object({
+    id: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/),
+    runner: z.enum(["node", "project-local"]),
+    tool: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/).optional(),
+    args: z.array(z.string().max(500)).max(40).default([]),
+    required: z.literal(true).default(true)
+  })
+  .strict()
+  .superRefine((check, context) => {
+    if (check.runner === "node" && check.tool) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tool"],
+        message: "node checks must use the bundled Node.js executable"
+      });
+    }
+    if (check.runner === "node" && check.args[0] !== "--test") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["args"],
+        message: "node checks must start with --test"
+      });
+    }
+    if (check.runner === "project-local" && !check.tool) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["tool"],
+        message: "project-local checks require a tool name"
+      });
+    }
+  });
+
+export const changeAutomationPolicySchema = automationPolicySchema
+  .extend({
+    schemaVersion: z.literal(2),
+    change: z
+      .object({
+        enabled: z.literal(true),
+        maxFiles: z.number().int().min(1).max(5).default(5),
+        maxPatchBytes: z
+          .number()
+          .int()
+          .min(1)
+          .max(200_000)
+          .default(200_000),
+        maxRepairAttempts: z.number().int().min(0).max(2).default(2),
+        protectedPaths: z
+          .array(z.string().min(1).max(200))
+          .max(50)
+          .default([
+            ".git",
+            ".github",
+            ".autorepoflow",
+            "package.json",
+            "package-lock.json",
+            "npm-shrinkwrap.json"
+          ]),
+        verification: z
+          .object({
+            timeoutSeconds: z.number().int().min(5).max(600),
+            checks: z.array(changeVerificationCheckSchema).min(1).max(10)
+          })
+          .strict()
+      })
+      .strict()
+  })
+  .superRefine((policy, context) => {
+    if (policy.automation.maxStage !== "local-patch") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["automation", "maxStage"],
+        message: "ChangeRun policy must set automation.maxStage to local-patch"
+      });
+    }
+    const ids = policy.change.verification.checks.map((check) => check.id);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["change", "verification", "checks"],
+        message: "verification check IDs must be unique"
+      });
+    }
+  });
+
+export type AutomationPolicyV1 = z.infer<typeof automationPolicySchema>;
+export type ChangeAutomationPolicy = z.infer<
+  typeof changeAutomationPolicySchema
+>;
+export type AutomationPolicy = AutomationPolicyV1 | ChangeAutomationPolicy;
 
 export const DEFAULT_AUTOMATION_POLICY: AutomationPolicy =
   automationPolicySchema.parse({ schemaVersion: 1 });
@@ -94,7 +183,14 @@ export async function loadAutomationPolicy(
   const contents = await readFile(policyPath, "utf8");
   const document = parseYaml(contents) as unknown;
   rejectEmbeddedSecrets(document);
-  const policy = automationPolicySchema.parse(document);
+  const schemaVersion =
+    document && typeof document === "object" && "schemaVersion" in document
+      ? (document as { schemaVersion?: unknown }).schemaVersion
+      : undefined;
+  const policy =
+    schemaVersion === 2
+      ? changeAutomationPolicySchema.parse(document)
+      : automationPolicySchema.parse(document);
   policy.evidence.exportRoots = policy.evidence.exportRoots.map((root) => {
     if (!isAbsolute(root)) {
       throw new Error("Evidence export roots in policy must be absolute");
@@ -102,6 +198,17 @@ export async function loadAutomationPolicy(
     return resolve(root);
   });
   return policy;
+}
+
+export function assertChangePolicy(
+  policy: AutomationPolicy
+): ChangeAutomationPolicy {
+  if (policy.schemaVersion !== 2) {
+    throw new Error(
+      "ChangeRun requires a schemaVersion 2 policy; policy v1 remains scan-only"
+    );
+  }
+  return changeAutomationPolicySchema.parse(policy);
 }
 
 export function modelForProvider(

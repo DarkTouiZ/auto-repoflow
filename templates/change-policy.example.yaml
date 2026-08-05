@@ -1,0 +1,44 @@
+schemaVersion: 2
+
+# ChangeRun is intentionally opt-in and stops at a verified local patch.
+automation:
+  maxStage: local-patch
+
+change:
+  enabled: true
+  maxFiles: 5
+  maxPatchBytes: 200000
+  maxRepairAttempts: 2
+  protectedPaths:
+    - .git
+    - .github
+    - .autorepoflow
+    - package.json
+    - package-lock.json
+    - npm-shrinkwrap.json
+  verification:
+    timeoutSeconds: 120
+    checks:
+      # Node.js checks must start with --test.
+      - id: node-test
+        runner: node
+        args: [--test]
+
+# The v1 AI/evidence fields remain available for scans performed by ChangeRun.
+ai:
+  allowedProviders: [ollama]
+  cloudMetadataAllowed: false
+  models: {}
+
+evidence:
+  generateMissing: false
+  exportRoots: []
+  failedSnapshotRetentionHours: 24
+  artifactRetentionDays: 7
+
+github:
+  forgeUploadAllowed: false
+
+# Keep this policy outside the repository with mode 0600 on macOS/Linux.
+# AutoRepoFlow never runs npm install and never invokes an IDE agent, pushes,
+# opens a pull request, merges, deploys, or publishes during ChangeRun.

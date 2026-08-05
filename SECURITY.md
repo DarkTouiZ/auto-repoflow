@@ -28,4 +28,8 @@ report through the private advisory and coordinate disclosure there.
 - A forge upload approval never grants cloud AI-provider approval.
 - Provider logs contain metadata and content hashes, not raw source context.
 - Mock-provider runs are simulations and cannot create a live pull request.
-- The workflow stops at a draft pull request; it cannot merge or deploy.
+- EvaluationRun stops at a Fix Packet. ChangeRun v0.3 stops at a verified local
+  test patch; it cannot invoke an IDE agent, push, create a pull request, merge,
+  deploy, or publish.
+- Verification uses exact policy checks, `shell:false`, bounded output, and a
+  sanitized environment. These controls are not an OS or network sandbox.

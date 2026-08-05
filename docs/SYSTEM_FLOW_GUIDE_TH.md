@@ -3,9 +3,10 @@
 เอกสารนี้อธิบายระบบ Auto-RepoFlow ตั้งแต่รับ repository จนถึงการสร้างรายงาน
 โดยเน้น privacy, evidence traceability และ human review เป็นหลัก
 
-> ขอบเขตปัจจุบัน: `EvaluationRun` ทำงานได้จริงและหยุดที่ `REPORT_READY`
-> ส่วน `ChangeRun` เป็นเป้าหมายถัดไปและต้องหยุดสูงสุดที่ `DRAFT_PR_CREATED`
-> ระบบไม่มี merge และ deployment capability
+> ขอบเขตปัจจุบัน: `EvaluationRun` หยุดที่ `REPORT_READY` ส่วน `ChangeRun` v0.3
+> รองรับเฉพาะ test gap บน JavaScript/TypeScript ใน isolated worktree และหยุดที่
+> `VERIFIED_LOCAL_PATCH` ระบบไม่ invoke agent, push, สร้าง PR, merge, deploy หรือ
+> publish
 
 ## 1. Mental model
 
@@ -475,27 +476,31 @@ stateDiagram-v2
     REPORT_READY --> [*]
 ```
 
-### ChangeRun — future workflow
+### ChangeRun v0.3 — implemented local test-patch workflow
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CHANGE_REQUESTED
-    CHANGE_REQUESTED --> EVIDENCE_REVIEWED
-    EVIDENCE_REVIEWED --> PLAN_DRAFTED
-    PLAN_DRAFTED --> LOCAL_CHANGE_PREPARED
-    LOCAL_CHANGE_PREPARED --> CHECKS_PASSED
-    CHECKS_PASSED --> DRAFT_PR_CREATED
-    DRAFT_PR_CREATED --> [*]
+    [*] --> INTAKE
+    INTAKE --> WORKTREE_READY
+    WORKTREE_READY --> AWAITING_AGENT
+    AWAITING_AGENT --> VERIFYING
+    VERIFYING --> REPAIR_REQUIRED
+    REPAIR_REQUIRED --> VERIFYING
+    VERIFYING --> REVIEW_REQUIRED
+    VERIFYING --> VERIFIED_LOCAL_PATCH
+    VERIFIED_LOCAL_PATCH --> [*]
 
-    note right of DRAFT_PR_CREATED
-        Maximum authority
-        No merge
-        No deployment
+    note right of VERIFIED_LOCAL_PATCH
+        Maximum authority in v0.3
+        No push or pull request
+        No merge, deploy, or publish
     end note
 ```
 
-การมี ChangeRun policy ไม่ได้หมายความว่า implementation นี้ทำงานครบแล้ว
-ขอบเขตที่ใช้งานและประเมินแล้วในปัจจุบันคือ EvaluationRun
+ChangeRun v0.3 รองรับเฉพาะ `ARF-TEST-001` และไฟล์ทดสอบ JavaScript/TypeScript
+ใน isolated worktree ผู้ใช้เป็นผู้เปิด IDE agent เอง ส่วน AutoRepoFlow ทำหน้าที่
+ตรวจ test-only patch, รัน exact checks ที่ policy อนุญาต, rescan และหยุดที่
+`VERIFIED_LOCAL_PATCH` เท่านั้น
 
 ## 17. MileMesh Cycle 2 example
 

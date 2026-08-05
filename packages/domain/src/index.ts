@@ -213,3 +213,53 @@ export interface EvaluationReport {
     status: "supported" | "partial" | "unsupported";
   };
 }
+
+export const changeRunStatuses = [
+  "INTAKE",
+  "WORKTREE_READY",
+  "AWAITING_AGENT",
+  "VERIFYING",
+  "REPAIR_REQUIRED",
+  "REVIEW_REQUIRED",
+  "VERIFIED_LOCAL_PATCH"
+] as const;
+
+export type ChangeRunStatus = (typeof changeRunStatuses)[number];
+
+export interface ChangeOutcomeReport {
+  schemaVersion: 1;
+  kind: "auto-repoflow-change-outcome";
+  before: {
+    findingCount: number;
+    testCoverage: {
+      covered: number;
+      total: number;
+      percentage: number;
+    };
+  };
+  after: {
+    findingCount: number;
+    testCoverage: {
+      covered: number;
+      total: number;
+      percentage: number;
+    };
+  };
+  verification: {
+    status: "passed" | "failed";
+    requiredChecks: number;
+    passedChecks: number;
+    targetClosed: boolean;
+    noNewRegression: boolean;
+  };
+  patch: {
+    bytes: number;
+    sha256: string;
+    filesChanged: number;
+    linesAdded: number;
+    linesDeleted: number;
+  };
+  durationMs: number;
+  attempts: number;
+  agentLabel: string;
+}

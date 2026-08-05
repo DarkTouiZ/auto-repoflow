@@ -3,8 +3,9 @@
 ## Product promise
 
 Auto-RepoFlow turns repository evidence into an actionable review and a
-portable Agent Fix Packet. It helps a human or an existing coding agent decide
-what to inspect next; it does not silently fix, merge, deploy, or publish code.
+portable Agent Fix Packet. Version 0.3 can also isolate and verify one test-gap
+patch from an existing IDE agent. It does not invoke that agent, push, open a
+pull request, merge, deploy, or publish code.
 
 ## Version 0.1.0 scope
 
@@ -85,17 +86,37 @@ The release checklist succeeded and a maintainer approved publication on
 The release checklist, maintainer approval, GitHub Release, OIDC publication,
 provenance verification, and `npx` smoke test completed on 2026-08-04.
 
+## Version 0.3.0 release candidate
+
+- deterministic MileMesh Lite replay and transparent handoff demo;
+- schema-v2 policy and test-only `ChangeRun` stopping at
+  `VERIFIED_LOCAL_PATCH`;
+- counterbalanced assisted/unassisted outcome trial with independent
+  patch-hash-bound review;
+- macOS, Linux, and Windows CI on Node.js 22 and 24;
+- legacy scan/report/Fix Packet compatibility.
+
+The npm `latest` tag remains `0.1.2` during development. Do not publish 0.2.0.
+Keep the v0.3 pull request in Draft until both assisted synthetic sessions are
+verified and independently accepted, the full CI matrix passes, privacy checks
+show no protected-path/source-egress/original-checkout mutation, and human
+review explicitly approves release. Replay evidence is reproducibility
+evidence only and must not be reported as live-AI quality.
+
 ## Future release checklist
 
 1. Update `apps/cli/package.json` and `CHANGELOG.md` in a reviewed pull request.
 2. Run `npm run check` from a clean checkout on a supported Node.js version.
 3. Run `npm pack -w auto-repoflow` and inspect the tarball contents.
-4. Install that tarball in a temporary directory and scan a separate fixture.
+4. Install that tarball in a temporary directory and run the legacy scan,
+   guided demo, and ChangeRun start/verify smoke on separate fixtures.
 5. Confirm the packet contains no source root, secret value, or private
    artifact.
-6. Merge the version change and create a GitHub release whose tag exactly
+6. Confirm the counterbalanced trial reports exact counts and paired medians,
+   without a statistical time-reduction claim from two participants.
+7. Merge the version change and create a GitHub release whose tag exactly
    matches `v<package-version>`.
-7. Let `publish.yml` publish through OIDC, then verify the npm version,
+8. Let `publish.yml` publish through OIDC, then verify the npm version,
    provenance, and `npx auto-repoflow@<version> --version`.
 
 Publishing is intentionally a separate human-approved action.
