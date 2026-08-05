@@ -8,6 +8,6 @@
     "start": "node dist/main.js"
   },
   "dependencies": {
-    "@auto-repoflow/domain": "*"
+    "@auto-repoflow/evaluator": "*"
   }
 }

@@ -136,6 +136,21 @@ function runCli(cliPath, args) {
   return result.stdout.trim();
 }
 
+export function benchmarkScanArguments(sourcePath, label) {
+  return [
+    "scan",
+    sourcePath,
+    "--project",
+    label,
+    "--format",
+    "json",
+    "--ai",
+    "off",
+    "--generate-evidence",
+    "none"
+  ];
+}
+
 function assertCleanGitTarget(sourcePath) {
   const revision = spawnSync("git", ["-C", sourcePath, "rev-parse", "HEAD"], {
     encoding: "utf8",
@@ -207,14 +222,10 @@ export async function runScanBenchmark(input) {
 
   for (let index = 0; index < input.runs; index += 1) {
     const startedAt = performance.now();
-    const reportText = runCli(input.cliPath, [
-      "scan",
-      sourcePath,
-      "--project",
-      input.label,
-      "--format",
-      "json"
-    ]);
+    const reportText = runCli(
+      input.cliPath,
+      benchmarkScanArguments(sourcePath, input.label)
+    );
     const durationMs = performance.now() - startedAt;
     const report = JSON.parse(reportText);
     if (
@@ -301,6 +312,8 @@ export async function runScanBenchmark(input) {
     },
     protocol: {
       mode: "rules",
+      ai: "off",
+      generatedEvidence: "none",
       runs: input.runs,
       requiresCleanGitTarget: true,
       rawSnapshotRetention: "purged-after-success"

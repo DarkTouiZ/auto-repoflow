@@ -9,6 +9,26 @@ findings, or completed worksheets.
 This is a small pilot, not a general accuracy study. Keep synthetic accuracy
 claims separate from human-review outcomes.
 
+## Optional usability rehearsal
+
+Before the formal review, two users may run the private terminal recorder to
+test whether the command, task, and handoff output are understandable:
+
+```bash
+auto-repoflow pilot validate --study <study-id>
+auto-repoflow pilot run --study <study-id> --session <session-id>
+auto-repoflow pilot summary --study <study-id>
+```
+
+This rehearsal records task completion, clarity, handoff readiness, one-line
+proposal text, and time automatically. Raw records remain private and the
+aggregate removes identities, paths, timestamps, finding tokens, proposals,
+and comments. The resulting summary is usability evidence only. It must not be
+reported as finding acceptance, engineering accuracy, precision, or recall.
+
+The formal protocol below remains necessary for reviewed acceptance,
+reclassification, and poster claims.
+
 ## Recommended design
 
 Use at least two reviewers and two approved public targets. Counterbalance the
@@ -24,8 +44,10 @@ anonymous `comparison_id`. Give every session a unique anonymous `session_id`.
 If only one reviewer is available, label the result exploratory and
 single-reviewer.
 
-The optional `local-ai` mode may be added later, but deterministic evidence
-verification must remain enabled.
+The optional `local-ai` mode is available in v0.2, but it must be evaluated as
+a separate comparison block with an explicit installed model. Deterministic
+evidence verification remains enabled, and AI-only edges always require human
+review.
 
 ## Session protocol
 

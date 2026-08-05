@@ -1,4 +1,4 @@
-import { chmod } from "node:fs/promises";
+import { chmod, readdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
 import { build } from "esbuild";
 
@@ -20,3 +20,9 @@ await build({
 });
 
 await chmod(outputFile, 0o755);
+
+for (const name of await readdir(resolve(repositoryRoot, "apps/cli/dist"))) {
+  if (name.includes(".spec.")) {
+    await rm(resolve(repositoryRoot, "apps/cli/dist", name), { force: true });
+  }
+}

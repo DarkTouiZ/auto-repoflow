@@ -4,6 +4,7 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   NotFoundException,
   Param,
   Post
@@ -13,13 +14,18 @@ import {
   runEvaluationSchema
 } from "@auto-repoflow/contracts";
 import { EvaluationService } from "@auto-repoflow/evaluator";
+import { requireMutationToken } from "./auth.js";
 
 @Controller("api/v1/evaluations")
 export class EvaluationController {
   private readonly service = new EvaluationService();
 
   @Post()
-  async create(@Body() body: unknown) {
+  async create(
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string
+  ) {
+    requireMutationToken(authorization);
     const parsed = createEvaluationSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());
@@ -42,7 +48,12 @@ export class EvaluationController {
   }
 
   @Post(":id/run")
-  async run(@Param("id") id: string, @Body() body: unknown) {
+  async run(
+    @Param("id") id: string,
+    @Body() body: unknown,
+    @Headers("authorization") authorization?: string
+  ) {
+    requireMutationToken(authorization);
     const parsed = runEvaluationSchema.safeParse(body);
     if (!parsed.success) {
       throw new BadRequestException(parsed.error.flatten());
@@ -99,7 +110,11 @@ export class EvaluationController {
   }
 
   @Post(":id/export-public")
-  async exportPublic(@Param("id") id: string) {
+  async exportPublic(
+    @Param("id") id: string,
+    @Headers("authorization") authorization?: string
+  ) {
+    requireMutationToken(authorization);
     try {
       const result = await this.service.exportPublic(id);
       return result.report;
@@ -109,7 +124,11 @@ export class EvaluationController {
   }
 
   @Delete(":id/artifacts")
-  async purge(@Param("id") id: string) {
+  async purge(
+    @Param("id") id: string,
+    @Headers("authorization") authorization?: string
+  ) {
+    requireMutationToken(authorization);
     try {
       await this.service.purgeArtifacts(id);
       return { evaluationId: id, status: "RAW_ARTIFACTS_PURGED" };
@@ -124,6 +143,9 @@ export class EvaluationController {
         ? String(error.code)
         : "";
     if (code === "ENOENT") throw new NotFoundException("Evaluation not found");
+    if (error instanceof Error && error.message === "Invalid evaluation id") {
+      throw new BadRequestException("Invalid evaluation id");
+    }
     throw error;
   }
 }

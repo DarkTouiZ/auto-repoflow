@@ -32,22 +32,51 @@ reviewed YAML file containing screenshot hashes rather than the images.
 Successful zero-config `scan` commands delete their raw snapshots by default.
 Use `--keep-snapshot` only when the filtered copy is needed for advanced local
 inspection. Advanced `eval` workflows retain raw snapshots until they are
-deleted per evaluation or by the seven-day retention command. Reports,
+deleted per evaluation or by policy retention. Failed-run snapshots default
+to 24 hours; reports and drafts default to seven days. Reports,
 manifests, privacy decisions, and aggregate metrics remain available after raw
 deletion.
 
-## Local AI
+## AI provider boundary
 
-The default provider is deterministic Mock. Ollama is accepted only over plain
-HTTP on `127.0.0.1`, `localhost`, or `::1`. The prompt contains artifact
-metadata, not raw source bodies.
+The zero-config default probes only Ollama over plain HTTP on `127.0.0.1`,
+`localhost`, or `::1`, then falls back to rules. It does not pull a model.
+OpenAI, Anthropic, and Google require a provider/model pinned in a private
+policy, policy permission for cloud metadata, the command consent flag, and an
+environment API key. `auto` never selects cloud.
+
+Cloud adapters use only their official HTTPS hosts. Payloads contain anonymous
+candidate/artifact IDs, relation and artifact kinds, pseudonymized names, and
+API locators. They exclude source bodies, filesystem paths, project labels,
+notes, logs, secrets, and API keys. The CLI prints a count/field/hash egress
+summary before each cloud stage. Raw prompts and responses are not stored.
 
 AI output is schema-validated and evidence-checked:
 
 - invented node IDs are discarded;
 - invented evidence IDs are discarded;
-- low-confidence links require human review;
+- every AI-only link requires human review regardless of confidence;
 - AI never changes deterministic command or schema failures.
+
+Generated evidence remains `GENERATED` until an anonymous human review
+manifest approves the exact draft SHA-256. AI identities cannot approve their
+own output.
+
+## Usability pilot boundary
+
+The optional interactive `pilot run` command is separate from non-interactive
+scanning. Study config, timestamps, reviewer/session/finding tokens, one-line
+proposal text, and comments stay under the private pilot root. A session starts
+only when its target matches the pinned Git SHA and has no tracked, untracked,
+or ignored files; the same integrity check runs again before completion.
+Assisted input must be a private file under that study root and is rejected if
+it contains an absolute user path, an email address, or common secret-shaped
+data.
+
+The pilot aggregate exports counts, ratings, timing ranges, and paired timing
+only. It excludes raw records and every token, target identifier, path,
+timestamp, proposal, and comment. Its schema explicitly disallows engineering-
+accuracy and human-acceptance claims; those require the formal reviewed pilot.
 
 ## Public export
 

@@ -1,5 +1,5 @@
 schema_version: 1
-review_status: human_reviewed
+review_status: draft_generated_requires_team_review
 source: synthetic_design
 screens:
   - id: item-list
