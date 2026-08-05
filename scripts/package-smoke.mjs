@@ -27,11 +27,22 @@ function run(command, args, options = {}) {
     ...options
   });
   if (result.status !== 0) {
+    const details = [result.error?.message, result.stdout, result.stderr]
+      .filter(Boolean)
+      .join("\n");
     throw new Error(
-      `${command} ${args.join(" ")} failed\n${result.stdout}\n${result.stderr}`
+      `${command} ${args.join(" ")} failed${details ? `\n${details}` : ""}`
     );
   }
   return result.stdout.trim();
+}
+
+function runNpm(args) {
+  const npmCli = process.env.npm_execpath;
+  if (!npmCli) {
+    throw new Error("package smoke must be launched through npm run");
+  }
+  return run(process.execPath, [npmCli, ...args]);
 }
 
 try {
@@ -103,7 +114,7 @@ change:
   run("git", ["commit", "-m", "fixture"], { cwd: fixture });
 
   const packed = JSON.parse(
-    run("npm", [
+    runNpm([
       "pack",
       "--json",
       "--workspace",
@@ -115,7 +126,7 @@ change:
     ])
   );
   const tarball = join(sandbox, packed[0].filename);
-  run("npm", [
+  runNpm([
     "install",
     tarball,
     "--ignore-scripts",
