@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   benchmarkScanArguments,
@@ -14,10 +15,10 @@ describe("privacy-safe scan benchmark", () => {
         { cwd: "/tmp", root: "/tmp/workspace" }
       )
     ).toEqual({
-      sourcePath: "/tmp/fixture",
+      sourcePath: resolve("/tmp", "fixture"),
       label: "public-fixture",
       runs: 5,
-      cliPath: "/tmp/workspace/apps/cli/dist/main.js",
+      cliPath: resolve("/tmp/workspace", "apps/cli/dist/main.js"),
       ledgerPath: undefined
     });
   });

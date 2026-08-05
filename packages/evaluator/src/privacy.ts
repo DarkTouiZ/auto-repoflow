@@ -96,10 +96,15 @@ export function sha256(data: string | Buffer): string {
   return createHash("sha256").update(data).digest("hex");
 }
 
-export async function getPrivateRoot(): Promise<string> {
-  const home = homedir();
+export function getConfiguredHome(): string {
+  const configuredHome = process.env.HOME?.trim();
+  const home = configuredHome || homedir();
   if (!home) throw new Error("HOME is required to resolve the private root");
-  const root = join(home, PRIVATE_ROOT_NAME);
+  return resolve(home);
+}
+
+export async function getPrivateRoot(): Promise<string> {
+  const root = join(getConfiguredHome(), PRIVATE_ROOT_NAME);
   await mkdir(root, { recursive: true, mode: 0o700 });
   await chmod(root, 0o700);
   return root;

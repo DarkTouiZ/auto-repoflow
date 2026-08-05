@@ -1,5 +1,5 @@
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtemp } from "node:fs/promises";
 import { afterEach, describe, expect, it } from "vitest";
@@ -12,6 +12,8 @@ import { extractArtifacts } from "./extract.js";
 import {
   MAX_SNAPSHOT_FILE_BYTES,
   createPrivateSnapshot,
+  getConfiguredHome,
+  getPrivateRoot,
   privacyDecisionFor
 } from "./privacy.js";
 import {
@@ -26,12 +28,42 @@ afterEach(() => {
   process.env.HOME = previousHome;
 });
 
+async function createMockQualityTool(input: {
+  source: string;
+  packageName: string;
+  tool: string;
+  body: string;
+}): Promise<void> {
+  const packageRoot = join(input.source, "node_modules", input.packageName);
+  const binary = join(packageRoot, "bin", `${input.tool}.js`);
+  await mkdir(join(packageRoot, "bin"), { recursive: true });
+  await writeFile(
+    join(packageRoot, "package.json"),
+    JSON.stringify({
+      name: input.packageName,
+      bin: { [input.tool]: `bin/${input.tool}.js` }
+    })
+  );
+  await writeFile(binary, input.body, { mode: 0o600 });
+}
+
 describe("privacy boundary", () => {
   it("excludes environment, Git and credential material", () => {
     expect(privacyDecisionFor(".env.production").decision).toBe("EXCLUDED");
     expect(privacyDecisionFor(".git/config").decision).toBe("EXCLUDED");
     expect(privacyDecisionFor("certs/client.pem").decision).toBe("EXCLUDED");
     expect(privacyDecisionFor("src/main.ts").decision).toBe("INCLUDED");
+  });
+
+  it("honors an explicit HOME for private artifacts on every platform", async () => {
+    const sandbox = await mkdtemp(join(tmpdir(), "arf-home-"));
+    const configuredHome = join(sandbox, "configured-home");
+    process.env.HOME = configuredHome;
+
+    expect(getConfiguredHome()).toBe(resolve(configuredHome));
+    await expect(getPrivateRoot()).resolves.toBe(
+      join(resolve(configuredHome), ".autorepoflow-private")
+    );
   });
 
   it("creates a private snapshot without storing the source root", async () => {
@@ -581,7 +613,7 @@ describe("config-driven evaluation pipeline", () => {
     process.env.HOME = home;
     await mkdir(home, { recursive: true });
     await mkdir(source, { recursive: true });
-    await mkdir(join(source, "node_modules", ".bin"), { recursive: true });
+    await mkdir(join(source, "node_modules"), { recursive: true });
 
     const routes =
       'app.get("/api/mock/items", listItems); export function listItems() {}';
@@ -589,12 +621,12 @@ describe("config-driven evaluation pipeline", () => {
       'it("GET /api/mock/items returns mock items", async () => {});';
     await writeFile(join(source, "routes.ts"), routes);
     await writeFile(join(source, "routes.test.ts"), tests);
-    const mockTsc = join(source, "node_modules", ".bin", "tsc");
-    await writeFile(
-      mockTsc,
-      '#!/usr/bin/env node\nconsole.log("mock typecheck passed");\n'
-    );
-    await chmod(mockTsc, 0o755);
+    await createMockQualityTool({
+      source,
+      packageName: "typescript",
+      tool: "tsc",
+      body: 'console.log("mock typecheck passed");\n'
+    });
     await writeFile(
       join(source, "package.json"),
       JSON.stringify({
@@ -717,11 +749,14 @@ describe("config-driven evaluation pipeline", () => {
     const configPath = join(sandbox, "pipeline.yaml");
     process.env.HOME = home;
     await mkdir(home, { recursive: true });
-    await mkdir(join(source, "node_modules", ".bin"), { recursive: true });
+    await mkdir(join(source, "node_modules"), { recursive: true });
     await writeFile(join(source, "app.ts"), "export const app = true;");
-    const mockJest = join(source, "node_modules", ".bin", "jest");
-    await writeFile(mockJest, "#!/usr/bin/env node\nprocess.exit(2);\n");
-    await chmod(mockJest, 0o755);
+    await createMockQualityTool({
+      source,
+      packageName: "jest",
+      tool: "jest",
+      body: "process.exit(2);\n"
+    });
     await writeFile(
       configPath,
       JSON.stringify({

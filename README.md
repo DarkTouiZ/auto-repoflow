@@ -16,14 +16,23 @@ private record, credential, or proprietary schema.
 
 ## Quick start
 
-Requirements: Node.js 22+ and npm.
+Requirements: Node.js 22+ and npm. CI covers Node.js 22 and 24 on Linux,
+macOS, and Windows.
+
+Version 0.3 is still a Draft PR and is not published to npm. Run the v0.3
+commands from this checkout until the release gates are complete:
 
 ```bash
-npx auto-repoflow@0.3.0 demo
-npx auto-repoflow@0.3.0 demo --scenario delivery-status
-npx auto-repoflow@0.3.0 demo --mode handoff
-npx auto-repoflow scan .
+npm install
+npm run build
+node apps/cli/dist/main.js demo
+node apps/cli/dist/main.js demo --scenario delivery-status
+node apps/cli/dist/main.js demo --mode handoff
+node apps/cli/dist/main.js scan .
 ```
+
+The currently published npm release remains `0.1.2`; do not use an
+unpublished `auto-repoflow@0.3.0` specifier yet.
 
 The zero-config command is non-interactive. `--ai auto` probes only a
 configured Ollama model over HTTP loopback and falls back successfully to
@@ -88,6 +97,15 @@ manifest, scan reports, bounded logs, and patch stay under
 configuration, dependency, protected-path, symlink, binary, deletion, rename,
 and oversized changes. It permits at most five test files and 200 KB, runs only
 exact policy checks with `shell:false`, and never calls `npm install`.
+
+When `HOME` is explicitly set, AutoRepoFlow uses that absolute location for
+all private artifacts on every supported platform; otherwise it falls back to
+the operating-system home directory. POSIX systems enforce private directory
+and file modes (`0700`/`0600`). Windows does not provide POSIX mode-bit
+semantics, so the selected home must remain protected by the current user's
+filesystem ACL. Project-local JavaScript quality tools are resolved through
+their package `bin` entry and launched with the current Node executable and
+`shell:false`, avoiding platform-specific `.cmd` shell wrappers.
 
 Policy permission and `--allow-verification` form the two authorization keys.
 Failed checks can return to `REPAIR_REQUIRED` for at most two repair rounds.

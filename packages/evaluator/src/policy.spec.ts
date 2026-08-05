@@ -20,7 +20,15 @@ describe("private automation policy", () => {
   it("requires private file permissions and rejects embedded credentials", async () => {
     const exposed = await privatePolicy("schemaVersion: 1\n");
     await chmod(exposed, 0o644);
-    await expect(loadAutomationPolicy(exposed)).rejects.toThrow(/group or others/);
+    if (process.platform === "win32") {
+      await expect(loadAutomationPolicy(exposed)).resolves.toMatchObject({
+        schemaVersion: 1
+      });
+    } else {
+      await expect(loadAutomationPolicy(exposed)).rejects.toThrow(
+        /group or others/
+      );
+    }
 
     const credential = await privatePolicy(
       "schemaVersion: 1\napiKey: should-never-be-here\n"
