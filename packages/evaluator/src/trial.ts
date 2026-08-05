@@ -423,11 +423,9 @@ export async function runOutcomeTrialSession(input: {
   let verified: Awaited<ReturnType<typeof verifyChangeRun>> | undefined;
   const currentChange = await changeRunStatus(phase.changeId);
   if (
-    [
-      "REPAIR_REQUIRED",
-      "REVIEW_REQUIRED",
-      "VERIFIED_LOCAL_PATCH"
-    ].includes(currentChange.status)
+    ["REVIEW_REQUIRED", "VERIFIED_LOCAL_PATCH"].includes(
+      currentChange.status
+    )
   ) {
     try {
       verified = {
@@ -435,45 +433,20 @@ export async function runOutcomeTrialSession(input: {
         report: await readChangeOutcomeReport(phase.changeId)
       };
     } catch {
-      if (
-        currentChange.status === "REPAIR_REQUIRED" ||
-        currentChange.status === "REVIEW_REQUIRED"
-      ) {
+      if (currentChange.status === "REVIEW_REQUIRED") {
         return withStudyLock(input.studyId, async () => {
           const study = await readStudy(input.studyId);
           const session = sessionById(study, input.sessionId);
           session.verificationLatencyMs += Date.now() - verificationStartedAt;
-          session.status =
-            currentChange.status === "REPAIR_REQUIRED"
-              ? "REPAIR_REQUIRED"
-              : "FAILED";
-          session.workStartedAt =
-            session.status === "REPAIR_REQUIRED"
-              ? new Date().toISOString()
-              : undefined;
+          session.status = "FAILED";
+          session.workStartedAt = undefined;
           await writeStudy(study);
           return {
             studyId: input.studyId,
             sessionId: input.sessionId,
             mode: session.mode,
             scenario: session.scenario,
-            phase: session.status === "REPAIR_REQUIRED" ? "REPAIR_REQUIRED" : "FAILED",
-            task:
-              session.status === "REPAIR_REQUIRED"
-                ? taskFor(session.scenario)
-                : undefined,
-            worktreePath:
-              session.status === "REPAIR_REQUIRED"
-                ? session.worktreePath
-                : undefined,
-            fixPacketPath:
-              session.status === "REPAIR_REQUIRED" && session.mode === "assisted"
-                ? session.fixPacketPath
-                : undefined,
-            promptPath:
-              session.status === "REPAIR_REQUIRED" && session.mode === "assisted"
-                ? session.promptPath
-                : undefined,
+            phase: "FAILED",
             workDurationMs: session.workDurationMs,
             verificationLatencyMs: session.verificationLatencyMs
           };

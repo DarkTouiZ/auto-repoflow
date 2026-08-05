@@ -133,4 +133,48 @@ describe("counterbalanced v0.3 outcome trial", () => {
     expect(serialized).not.toContain(review.patchSha256);
     expect(serialized).not.toContain("proposal");
   });
+
+  it("retries verification after a missing-patch repair", async () => {
+    process.env.HOME = join(
+      await mkdtemp(join(tmpdir(), "arf-trial-repair-home-")),
+      "home"
+    );
+    await prepareOutcomeTrial("repair-v03");
+    const handoff = await runOutcomeTrialSession({
+      studyId: "repair-v03",
+      sessionId: "03",
+      agentLabel: "Codex"
+    });
+    if (!handoff.worktreePath) throw new Error("trial worktree was not created");
+
+    await expect(
+      runOutcomeTrialSession({
+        studyId: "repair-v03",
+        sessionId: "03",
+        agentLabel: "Codex"
+      })
+    ).rejects.toThrow(/contains no patch/);
+    expect((await outcomeTrialStatus("repair-v03")).sessions).toContainEqual({
+      id: "03",
+      mode: "assisted",
+      scenario: "delivery-list",
+      status: "REPAIR_REQUIRED"
+    });
+
+    const replay = bundledReplayPatch("delivery-list");
+    const patchPath = join(process.env.HOME, "repair.patch");
+    await writeFile(patchPath, replay.patch, { mode: 0o600 });
+    execFileSync("git", ["apply", "--check", patchPath], {
+      cwd: handoff.worktreePath
+    });
+    execFileSync("git", ["apply", patchPath], { cwd: handoff.worktreePath });
+
+    await expect(
+      runOutcomeTrialSession({
+        studyId: "repair-v03",
+        sessionId: "03",
+        agentLabel: "Codex"
+      })
+    ).resolves.toMatchObject({ phase: "VERIFIED", repairAttempts: 1 });
+  });
 });
