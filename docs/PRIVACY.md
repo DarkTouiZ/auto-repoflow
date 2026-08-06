@@ -62,6 +62,46 @@ Generated evidence remains `GENERATED` until an anonymous human review
 manifest approves the exact draft SHA-256. AI identities cannot approve their
 own output.
 
+## ChangeRun boundary
+
+ChangeRun creates its branch, worktree, Fix Packet, prompt, manifest, baseline
+and after reports, bounded verification logs, and patch under the private root.
+The private manifest records the local source root and pinned revision because
+Git must manage the worktree; these values never enter the public
+`ChangeOutcomeReport`.
+
+The original checkout must be clean at intake and its exact HEAD/status are
+checked again before accepting a patch. Only JavaScript/TypeScript test paths
+are accepted. Source, configuration, dependencies, protected paths, binary
+content, symlinks, deletions, renames, more than five files, and patches above
+200 KB are rejected. Verification requires both schema-v2 policy permission and
+`--allow-verification`, uses `shell:false`, and never installs dependencies.
+
+AutoRepoFlow does not send the repository to an agent or cloud provider during
+ChangeRun. The user opens an already trusted IDE agent in the isolated
+worktree. Agent authentication, privacy settings, and any source egress remain
+the user's separate decision. AutoRepoFlow never invokes, pushes, opens a pull
+request, merges, deploys, or publishes.
+
+The public outcome allowlist contains before/after finding counts and test
+linkage, aggregate check status, patch size/hash, duration, attempts, and a
+normalized agent label. It excludes source, diff, logs, paths, revisions,
+finding IDs, and participant/session/reviewer tokens.
+
+## Outcome-trial boundary
+
+The counterbalanced outcome trial uses public synthetic fixtures only. Private
+study state stores participant/reviewer tokens, worktree paths, timing, and
+patch hashes. Unassisted sessions are not shown the validated Fix Packet;
+assisted sessions are. The same normalized IDE-agent label is enforced across
+each participant's pair.
+
+Independent decisions are bound to the verified patch SHA-256 and require a
+reviewer token different from the participant token. Aggregate summaries omit
+all tokens, session IDs, paths, patch hashes, timestamps, and raw responses.
+They report exact counts and paired medians without a statistical time-
+reduction claim.
+
 ## Usability pilot boundary
 
 The optional interactive `pilot run` command is separate from non-interactive
@@ -85,4 +125,4 @@ project/company names, absolute paths, API endpoints, database names and fields,
 screenshots, and code excerpts.
 
 Before publishing, a human must still inspect the generated JSON and approve
-the exact file. The POC never pushes or publishes it automatically.
+the exact file. AutoRepoFlow never pushes or publishes it automatically.

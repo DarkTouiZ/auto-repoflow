@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  assertChangePolicy,
   assertCloudAuthorization,
   assertEvidenceExportAllowed,
   loadAutomationPolicy
@@ -19,7 +20,15 @@ describe("private automation policy", () => {
   it("requires private file permissions and rejects embedded credentials", async () => {
     const exposed = await privatePolicy("schemaVersion: 1\n");
     await chmod(exposed, 0o644);
-    await expect(loadAutomationPolicy(exposed)).rejects.toThrow(/group or others/);
+    if (process.platform === "win32") {
+      await expect(loadAutomationPolicy(exposed)).resolves.toMatchObject({
+        schemaVersion: 1
+      });
+    } else {
+      await expect(loadAutomationPolicy(exposed)).rejects.toThrow(
+        /group or others/
+      );
+    }
 
     const credential = await privatePolicy(
       "schemaVersion: 1\napiKey: should-never-be-here\n"
@@ -76,5 +85,48 @@ evidence:
     expect(() =>
       assertEvidenceExportAllowed(policy, join(tmpdir(), "outside-review"))
     ).toThrow(/outside policy export roots/);
+  });
+
+  it("keeps policy v1 scan-only and requires bounded exact checks in policy v2", async () => {
+    const legacy = await loadAutomationPolicy(
+      await privatePolicy("schemaVersion: 1\n")
+    );
+    expect(() => assertChangePolicy(legacy)).toThrow(/scan-only/);
+
+    const valid = await loadAutomationPolicy(
+      await privatePolicy(`schemaVersion: 2
+automation:
+  maxStage: local-patch
+change:
+  enabled: true
+  maxFiles: 5
+  maxPatchBytes: 200000
+  maxRepairAttempts: 2
+  verification:
+    timeoutSeconds: 30
+    checks:
+      - id: unit
+        runner: node
+        args: [--test]
+`)
+    );
+    expect(assertChangePolicy(valid).change.verification.checks).toHaveLength(1);
+
+    await expect(
+      loadAutomationPolicy(
+        await privatePolicy(`schemaVersion: 2
+automation:
+  maxStage: fix-packet
+change:
+  enabled: true
+  verification:
+    timeoutSeconds: 30
+    checks:
+      - id: unsafe
+        runner: node
+        args: [script.js]
+`)
+      )
+    ).rejects.toThrow();
   });
 });

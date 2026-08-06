@@ -1,9 +1,16 @@
 import { spawn } from "node:child_process";
-import { mkdir, realpath, stat } from "node:fs/promises";
-import { dirname, join, sep } from "node:path";
+import { mkdir, readFile, realpath, stat } from "node:fs/promises";
+import { delimiter, dirname, join, sep } from "node:path";
 import type { EvaluationPipelineConfig } from "./pipeline.js";
 
 const MAX_OUTPUT_BYTES = 200_000;
+const QUALITY_TOOL_PACKAGES: Record<string, string> = {
+  eslint: "eslint",
+  jest: "jest",
+  tsc: "typescript",
+  tslint: "tslint",
+  vitest: "vitest"
+};
 
 export interface QualityCheckResult {
   id: string;
@@ -59,9 +66,12 @@ function sanitizedEnvironment(input: {
       "/bin",
       "/usr/sbin",
       "/sbin"
-    ].join(":"),
+    ].join(delimiter),
     HOME: input.qualityHome,
+    USERPROFILE: input.qualityHome,
     TMPDIR: input.qualityTmp,
+    TEMP: input.qualityTmp,
+    TMP: input.qualityTmp,
     CI: "true",
     NODE_ENV: "test",
     NO_COLOR: "1",
@@ -70,7 +80,7 @@ function sanitizedEnvironment(input: {
     npm_config_audit: "false",
     npm_config_fund: "false"
   };
-  for (const name of ["LANG", "LC_ALL", "TZ"]) {
+  for (const name of ["LANG", "LC_ALL", "TZ", "SystemRoot", "WINDIR"]) {
     if (process.env[name]) environment[name] = process.env[name];
   }
   return environment;
@@ -79,9 +89,25 @@ function sanitizedEnvironment(input: {
 async function resolveLocalTool(
   sourcePath: string,
   tool: string
-): Promise<string> {
+): Promise<{ command: string; prefixArgs: string[] }> {
   const nodeModulesRoot = await realpath(join(sourcePath, "node_modules"));
-  const binary = await realpath(join(nodeModulesRoot, ".bin", tool));
+  const packageName = QUALITY_TOOL_PACKAGES[tool];
+  if (!packageName) throw new Error(`Quality tool ${tool} is not supported`);
+  const packageRoot = await realpath(join(nodeModulesRoot, packageName));
+  if (!packageRoot.startsWith(`${nodeModulesRoot}${sep}`)) {
+    throw new Error(`Quality tool ${tool} resolves outside local node_modules`);
+  }
+  const packageDocument = JSON.parse(
+    await readFile(join(packageRoot, "package.json"), "utf8")
+  ) as { bin?: string | Record<string, string> };
+  const relativeBinary =
+    typeof packageDocument.bin === "string"
+      ? packageDocument.bin
+      : packageDocument.bin?.[tool];
+  if (!relativeBinary) {
+    throw new Error(`Quality tool ${tool} has no package-local executable`);
+  }
+  const binary = await realpath(join(packageRoot, relativeBinary));
   const binaryStat = await stat(binary);
   if (!binaryStat.isFile()) {
     throw new Error(`Quality tool ${tool} is not a file`);
@@ -89,7 +115,7 @@ async function resolveLocalTool(
   if (!binary.startsWith(`${nodeModulesRoot}${sep}`)) {
     throw new Error(`Quality tool ${tool} resolves outside local node_modules`);
   }
-  return binary;
+  return { command: process.execPath, prefixArgs: [binary] };
 }
 
 async function runCheck(input: {
@@ -99,7 +125,10 @@ async function runCheck(input: {
   timeoutSeconds: number;
   check: NonNullable<EvaluationPipelineConfig["quality"]>["checks"][number];
 }): Promise<QualityCheckResult> {
-  const binary = await resolveLocalTool(input.sourcePath, input.check.tool);
+  const executable = await resolveLocalTool(
+    input.sourcePath,
+    input.check.tool
+  );
   const startedAt = Date.now();
   const truncation = { truncated: false };
   let stdout = "";
@@ -110,12 +139,16 @@ async function runCheck(input: {
     exitCode: number | null;
     signal: NodeJS.Signals | null;
   }>((resolvePromise, rejectPromise) => {
-    const child = spawn(binary, input.check.args, {
-      cwd: input.sourcePath,
-      shell: false,
-      env: sanitizedEnvironment(input),
-      stdio: ["ignore", "pipe", "pipe"]
-    });
+    const child = spawn(
+      executable.command,
+      [...executable.prefixArgs, ...input.check.args],
+      {
+        cwd: input.sourcePath,
+        shell: false,
+        env: sanitizedEnvironment(input),
+        stdio: ["ignore", "pipe", "pipe"]
+      }
+    );
     child.stdout.on("data", (chunk: Buffer) => {
       stdout = appendOutput(stdout, chunk, truncation);
     });

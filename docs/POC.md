@@ -16,9 +16,10 @@ It answers four practical questions before implementation review:
 3. What is missing or contradictory?
 4. What evidence supports each conclusion?
 
-This is an auditor, not an autonomous merger. v0.2 `EvaluationRun` stops at a
-validated Fix Packet. The v0.3 `ChangeRun` remains a separate future workflow
-with a Draft PR maximum.
+This is an auditor and bounded local verifier, not an autonomous merger. The
+v0.2 `EvaluationRun` still stops at a validated Fix Packet. The opt-in v0.3
+`ChangeRun` isolates one JavaScript/TypeScript test-gap patch and stops at
+`VERIFIED_LOCAL_PATCH`; it cannot push or create a pull request.
 
 ## Current architecture
 
@@ -33,6 +34,8 @@ with a Draft PR maximum.
 - atomic file queue and worker for the optional service
 - public aggregate exporter
 - synthetic MileMesh benchmark
+- hash-pinned MileMesh Lite guided replay/handoff demo
+- private atomic ChangeRun and counterbalanced outcome-trial state
 
 The file-backed adapter keeps the POC runnable without Docker. A MySQL metadata
 adapter can replace it behind the same service boundary after the pilot proves
@@ -79,8 +82,9 @@ until a second reviewer validates the ground truth.
   frameworks need additional adapters.
 - Route registration proves an implementation entry point, not a complete
   controller/service/repository chain.
-- Test linking uses names and metadata; command execution evidence is a separate
-  next adapter.
+- Test linking uses names and metadata. ChangeRun verification executes only
+  exact schema-v2 policy checks after a separate command-consent flag; this is
+  not an OS or network sandbox.
 - Draft API requests and test plans improve readiness coverage only. They remain
   human-review evidence and cannot satisfy approved-spec or executable-test
   metrics.

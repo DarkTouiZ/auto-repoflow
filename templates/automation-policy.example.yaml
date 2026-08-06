@@ -1,5 +1,8 @@
 schemaVersion: 1
 
+# Policy v1 is scan/evidence-only. Use change-policy.example.yaml to opt in to
+# the bounded v0.3 ChangeRun workflow.
+
 ai:
   allowedProviders:
     - ollama

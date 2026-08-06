@@ -29,6 +29,25 @@ reported as finding acceptance, engineering accuracy, precision, or recall.
 The formal protocol below remains necessary for reviewed acceptance,
 reclassification, and poster claims.
 
+For v0.3 test-only change outcomes, use the separate counterbalanced workflow:
+
+```bash
+auto-repoflow trial prepare --id mentor-v03
+auto-repoflow trial run \
+  --study mentor-v03 --session 01 --agent-label <ide-agent-label>
+auto-repoflow trial review \
+  --study mentor-v03 --session 01 \
+  --reviewer-token <independent-token> --decision accept
+auto-repoflow trial summary \
+  --study mentor-v03 --out /absolute/private/summary.json
+```
+
+It creates four public-synthetic sessions, counterbalances assisted and
+unassisted fixtures, enforces the same IDE agent per participant, excludes
+setup/scan/verification from work timing, and binds independent acceptance to
+the verified patch SHA-256. With only two participants, report exact counts and
+paired medians; do not claim a statistical time reduction.
+
 ## Recommended design
 
 Use at least two reviewers and two approved public targets. Counterbalance the

@@ -11,3 +11,6 @@ export * from "./ai.js";
 export * from "./pipeline.js";
 export * from "./quality.js";
 export * from "./handoff.js";
+export * from "./change.js";
+export * from "./fixtures.js";
+export * from "./trial.js";

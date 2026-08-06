@@ -1,9 +1,8 @@
 import { readFile, realpath, stat } from "node:fs/promises";
-import { homedir } from "node:os";
 import { isAbsolute, parse as parsePath, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import { privacyDecisionFor } from "./privacy.js";
+import { getConfiguredHome, privacyDecisionFor } from "./privacy.js";
 
 const evidenceSchema = z.object({
   filePath: z.string().min(1),
@@ -67,7 +66,7 @@ export async function resolveScopedRepositoryPath(
 ): Promise<string> {
   const resolved = await realpath(resolve(sourcePath));
   const filesystemRoot = parsePath(resolved).root;
-  const configuredHome = resolve(homedir());
+  const configuredHome = getConfiguredHome();
   const resolvedHome = await realpath(configuredHome).catch(() => configuredHome);
   if (resolved === filesystemRoot || resolved === resolvedHome) {
     throw new Error(

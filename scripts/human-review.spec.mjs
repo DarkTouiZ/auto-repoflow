@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   HUMAN_REVIEW_COLUMNS,
@@ -47,7 +48,7 @@ describe("privacy-safe human review summary", () => {
         { cwd: "/tmp" }
       )
     ).toEqual({
-      inputPath: "/tmp/pilot.csv",
+      inputPath: resolve("/tmp", "pilot.csv"),
       label: "mentor-pilot-1"
     });
   });

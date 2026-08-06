@@ -2,7 +2,7 @@
   "name": "@auto-repoflow/workspace",
   "version": "0.1.0",
   "private": true,
-  "description": "Local-first, identity-aware software change automation that stops at a draft pull request.",
+  "description": "Privacy-first evidence scanning and guided verification that stops at a local patch.",
   "license": "MIT",
   "workspaces": [
     "apps/*",

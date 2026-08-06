@@ -5,6 +5,32 @@ project follows semantic versioning.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-06
+
+### Added
+
+- Added a deterministic MileMesh Lite guided demo with hash-pinned replay and
+  transparent IDE-agent handoff modes.
+- Added private ChangeRun state, isolated Git worktrees, deterministic
+  `ARF-TEST-001` selection, test-only patch validation, exact allowlisted
+  verification, bounded repair/resume, rescan, and before/after reports.
+- Added schema-v2 change policy with two-key verification authorization while
+  preserving policy-v1 scan compatibility.
+- Added a four-session counterbalanced assisted/unassisted outcome trial with
+  same-agent enforcement, independent patch-hash-bound review, exact counts,
+  and paired medians.
+- Expanded package smoke coverage and CI to macOS, Linux, and Windows on Node
+  22 and 24.
+
+### Security
+
+- ChangeRun rejects source, config, dependency, protected-path, binary,
+  symlink, deletion, rename, oversized, and non-test changes.
+- Public change outcomes exclude source, diffs, logs, paths, revisions,
+  finding IDs, and participant/session tokens.
+- AutoRepoFlow never invokes an IDE agent, installs dependencies during
+  verification, pushes, creates a pull request, merges, deploys, or publishes.
+
 ## [0.2.0] - 2026-08-04
 
 ### Added
@@ -65,7 +91,8 @@ project follows semantic versioning.
 - Exact known-gap identity scoring for reproducible benchmark evaluation.
 - Standalone npm package for Node.js 22 or newer.
 
-[Unreleased]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.2...v0.3.0
 [0.2.0]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/DarkTouiZ/auto-repoflow/compare/v0.1.0...v0.1.1
