@@ -50,6 +50,17 @@ The registry reports SLSA provenance anchored to the sanitized personal
 `DarkTouiZ/auto-repoflow` source commit. The published package was also
 verified with `npx auto-repoflow@0.1.2 --version`.
 
+Version `0.3.0` was published through GitHub OIDC on 2026-08-06:
+
+- npm: <https://www.npmjs.com/package/auto-repoflow/v/0.3.0>
+- GitHub: <https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.3.0>
+- provenance:
+  <https://registry.npmjs.org/-/npm/v1/attestations/auto-repoflow@0.3.0>
+
+The release tag and npm SLSA provenance resolve to merge commit
+`7b97bd95f0ef1e70ff489dec289b5cafd5b9df8f`. The registry `latest` tag is
+`0.3.0`, and an isolated registry install returned `0.3.0`.
+
 ## One-time trusted publisher setup
 
 Trusted publishing was configured successfully on 2026-08-03 under npm package
@@ -86,7 +97,7 @@ The release checklist succeeded and a maintainer approved publication on
 The release checklist, maintainer approval, GitHub Release, OIDC publication,
 provenance verification, and `npx` smoke test completed on 2026-08-04.
 
-## Version 0.3.0 release candidate
+## Version 0.3.0
 
 - deterministic MileMesh Lite replay and transparent handoff demo;
 - schema-v2 policy and test-only `ChangeRun` stopping at
@@ -96,12 +107,20 @@ provenance verification, and `npx` smoke test completed on 2026-08-04.
 - macOS, Linux, and Windows CI on Node.js 22 and 24;
 - legacy scan/report/Fix Packet compatibility.
 
-The npm `latest` tag remains `0.1.2` during development. Do not publish 0.2.0.
-Keep the v0.3 pull request in Draft until both assisted synthetic sessions are
-verified and independently accepted, the full CI matrix passes, privacy checks
-show no protected-path/source-egress/original-checkout mutation, and human
-review explicitly approves release. Replay evidence is reproducibility
-evidence only and must not be reported as live-AI quality.
+Pull request 10 was merged with a merge commit after its final CI matrix passed
+all six operating-system and Node.js jobs. The post-merge matrix also passed
+all six jobs. The assisted and unassisted trial sessions were each verified
+and independently accepted `2/2`, producing two complete pairs. The assisted
+work-time median was `264398 ms`, the unassisted median was `225071 ms`, and
+the median paired difference was `+39328 ms`.
+
+The two-pair trial is descriptive evidence only and does not support a
+statistical time-reduction claim. Replay evidence remains reproducibility
+evidence, not live-AI quality. Privacy review found no protected-path change,
+source egress, original-checkout mutation, or aggregate-summary privacy leak.
+The release checklist, GitHub Release, OIDC publication, provenance
+verification, and isolated `npx auto-repoflow@0.3.0 --version` smoke test
+completed on 2026-08-06.
 
 ## Future release checklist
 

@@ -19,20 +19,23 @@ private record, credential, or proprietary schema.
 Requirements: Node.js 22+ and npm. CI covers Node.js 22 and 24 on Linux,
 macOS, and Windows.
 
-Version 0.3 is still a Draft PR and is not published to npm. Run the v0.3
-commands from this checkout until the release gates are complete:
+Version `0.3.0` is the current npm `latest` release. It was published through
+GitHub OIDC with SLSA provenance on 2026-08-06:
+
+- [GitHub Release](https://github.com/DarkTouiZ/auto-repoflow/releases/tag/v0.3.0)
+- [npm package](https://www.npmjs.com/package/auto-repoflow/v/0.3.0)
+- [provenance attestation](https://registry.npmjs.org/-/npm/v1/attestations/auto-repoflow@0.3.0)
 
 ```bash
-npm install
-npm run build
-node apps/cli/dist/main.js demo
-node apps/cli/dist/main.js demo --scenario delivery-status
-node apps/cli/dist/main.js demo --mode handoff
-node apps/cli/dist/main.js scan .
+npx auto-repoflow@0.3.0 --version
+npx auto-repoflow@0.3.0 demo
+npx auto-repoflow@0.3.0 demo --scenario delivery-status
+npx auto-repoflow@0.3.0 demo --mode handoff
+npx auto-repoflow@0.3.0 scan .
 ```
 
-The currently published npm release remains `0.1.2`; do not use an
-unpublished `auto-repoflow@0.3.0` specifier yet.
+For source-checkout development, run `npm install`, `npm run build`, and
+`node apps/cli/dist/main.js <command>`.
 
 The zero-config command is non-interactive. `--ai auto` probes only a
 configured Ollama model over HTTP loopback and falls back successfully to
