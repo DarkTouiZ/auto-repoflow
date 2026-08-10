@@ -11,6 +11,8 @@ interface LocalRunMetric {
   aiProvider: EvaluationReport["aiExecution"]["provider"];
   aiStatus: EvaluationReport["aiExecution"]["status"];
   aiLatencyMs: number;
+  aiInputTokens: number;
+  aiOutputTokens: number;
   candidateBatches: number;
   suggestionsAccepted: number;
   suggestionsRejected: number;
@@ -30,6 +32,8 @@ export interface LocalMetricsSummary {
     suggestionsAccepted: number;
     suggestionsRejected: number;
     aiLatencyMs: number;
+    aiInputTokens: number;
+    aiOutputTokens: number;
   };
   privacy: {
     remoteTelemetry: false;
@@ -52,6 +56,8 @@ export async function recordLocalMetric(report: EvaluationReport): Promise<void>
     aiProvider: report.aiExecution.provider,
     aiStatus: report.aiExecution.status,
     aiLatencyMs: report.aiExecution.durationMs,
+    aiInputTokens: report.aiExecution.usage?.inputTokens ?? 0,
+    aiOutputTokens: report.aiExecution.usage?.outputTokens ?? 0,
     candidateBatches: report.aiExecution.batches,
     suggestionsAccepted: report.aiExecution.suggestionsAccepted,
     suggestionsRejected: report.aiExecution.suggestionsRejected,
@@ -138,6 +144,14 @@ export async function summarizeLocalMetrics(): Promise<LocalMetricsSummary> {
       ),
       aiLatencyMs: metrics.reduce(
         (total, item) => total + item.aiLatencyMs,
+        0
+      ),
+      aiInputTokens: metrics.reduce(
+        (total, item) => total + (item.aiInputTokens ?? 0),
+        0
+      ),
+      aiOutputTokens: metrics.reduce(
+        (total, item) => total + (item.aiOutputTokens ?? 0),
         0
       )
     },

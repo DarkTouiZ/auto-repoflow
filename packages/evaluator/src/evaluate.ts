@@ -64,6 +64,26 @@ function isDeferredScenarioStatus(value: unknown): boolean {
   ].includes(status);
 }
 
+// Explicit per-rule severity. Without this, severity is derived purely from
+// status (FAIL -> HIGH, else MEDIUM), which makes low-value hygiene rules like
+// "missing npm lint script" outrank high-value signals like "untested endpoint".
+// finding.id is unaffected (it embeds only ruleId + slugified title), so the
+// MileMesh known-gap ledger, which matches on finding.id, is not disturbed.
+const RULE_SEVERITY: Partial<Record<string, Finding["severity"]>> = {
+  "ARF-QUALITY-001": "LOW",
+  "ARF-QUALITY-002": "LOW",
+  "ARF-CI-001": "LOW",
+  "ARF-TEST-EMPTY-001": "HIGH",
+  "ARF-TEST-FOCUS-001": "HIGH",
+  "ARF-TEST-SKIP-001": "MEDIUM",
+  "ARF-TEST-ASSERT-001": "MEDIUM",
+  "ARF-CHANGE-TEST-001": "HIGH",
+  "ARF-CHANGE-UNTESTED-001": "MEDIUM",
+  "ARF-CHANGE-STALE-001": "MEDIUM",
+  "ARF-CHANGE-SPEC-001": "HIGH",
+  "ARF-CHANGE-COVERAGE-001": "HIGH"
+};
+
 function finding(
   ruleId: string,
   status: Finding["status"],
@@ -75,7 +95,7 @@ function finding(
   return {
     id: `finding:${ruleId}:${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
     ruleId,
-    severity: status === "FAIL" ? "HIGH" : "MEDIUM",
+    severity: RULE_SEVERITY[ruleId] ?? (status === "FAIL" ? "HIGH" : "MEDIUM"),
     status,
     title,
     explanation,
