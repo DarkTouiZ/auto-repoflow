@@ -25,7 +25,21 @@ const ALWAYS_EXCLUDED_NAMES = new Set([
   ".next",
   "artifacts",
   "run-worktrees",
-  "bare-mirrors"
+  "bare-mirrors",
+  // Non-JS ecosystem build/dependency dirs that otherwise get byte-copied into
+  // the private snapshot on polyglot repos (slow, disk-hungry, and never scanned
+  // because they hold no supported source).
+  ".venv",
+  "venv",
+  "__pycache__",
+  "target",
+  "Pods",
+  ".gradle",
+  ".turbo",
+  ".svelte-kit",
+  ".nuxt",
+  ".output",
+  ".terraform"
 ]);
 const SECRET_BASENAME =
   /^(?:\.env(?:\..*)?|.*\.(?:pem|key|p12|pfx|crt|cer|der|jks|keystore)|id_(?:rsa|dsa|ecdsa|ed25519))$/i;

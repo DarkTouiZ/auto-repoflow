@@ -7,6 +7,36 @@ import type {
 } from "@auto-repoflow/domain";
 import { parse as parseYaml } from "yaml";
 import type { SnapshotFile } from "./privacy.js";
+import {
+  bodySpanOf,
+  callArgs,
+  computeCodeMask,
+  countTopLevelStatements,
+  isCodeIndex,
+  maskNonCode
+} from "./jsscan.js";
+
+export const CODE_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".cts"
+];
+
+export const TEST_FILE_PATTERN =
+  /(?:\.(?:spec|test|cy|e2e-spec)\.[cm]?[jt]sx?$)|(?:(?:^|\/)(?:__tests__|tests?)\/.*\.[cm]?[jt]sx?$)/;
+
+export function isCodeFile(relativePath: string): boolean {
+  return CODE_EXTENSIONS.includes(extname(relativePath).toLowerCase());
+}
+
+export function isTestFilePath(relativePath: string): boolean {
+  return TEST_FILE_PATTERN.test(relativePath);
+}
 
 export interface ExtractedArtifacts {
   nodes: ArtifactNode[];
@@ -70,19 +100,44 @@ function normalizeApiPath(value: string): string {
     .replace(/\/$/, "") || "/";
 }
 
+// Receivers that are HTTP clients making outbound calls, not route registrars.
+// Their `.get("/x")` is a frontend/integration call handled elsewhere.
+const HTTP_CLIENT_RECEIVERS = new Set([
+  "axios",
+  "http",
+  "https",
+  "fetch",
+  "superagent",
+  "got",
+  "ky",
+  "request",
+  "client",
+  "httpclient"
+]);
+
+function isRouteRegistration(receiver: string, rawPath: string): boolean {
+  // A known HTTP client is never a route registrar.
+  if (HTTP_CLIENT_RECEIVERS.has(receiver.toLowerCase())) return false;
+  // Accept a route when its path is server-route-like (leading slash) or the
+  // receiver is clearly a router. This admits server.get / api.post / r.get on
+  // absolute paths while rejecting map.get("key"), cache.get(...), _.get(...).
+  if (rawPath.startsWith("/")) return true;
+  return /(?:^app$|router$)/i.test(receiver);
+}
+
 function extractRoutes(
   text: string,
   file: SnapshotFile,
   nodes: ArtifactNode[],
-  routePaths: Map<string, string>
+  routePaths: Map<string, string>,
+  mask: Uint8Array
 ): void {
   const routeRegex =
     /\b([A-Za-z_$][\w$]*)\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
   for (const match of text.matchAll(routeRegex)) {
-    const linePrefix = text.slice(text.lastIndexOf("\n", match.index ?? 0) + 1, match.index);
-    if (linePrefix.includes("//")) continue;
+    if (!isCodeIndex(mask, match.index ?? 0)) continue;
     const router = match[1];
-    if (!/(?:^app$|router$)/i.test(router)) continue;
+    if (!isRouteRegistration(router, match[3])) continue;
     const method = match[2].toUpperCase();
     const path = normalizeApiPath(match[3]);
     const locator = `${method} ${path}`;
@@ -110,23 +165,36 @@ function extractRoutes(
   }
 }
 
+function nestControllerPrefix(text: string): string | null {
+  const controllerMatch = text.match(/@Controller\s*\(([^)]*)\)/);
+  if (!controllerMatch) return null;
+  const args = controllerMatch[1] ?? "";
+  // String form: @Controller("users") or @Controller('users').
+  const stringForm = args.match(/^\s*["'`]([^"'`]*)["'`]\s*$/);
+  // Object form: @Controller({ path: "users", version: "1" }).
+  const objectForm = args.match(/path\s*:\s*["'`]([^"'`]*)["'`]/);
+  const rawPrefix = stringForm?.[1] ?? objectForm?.[1] ?? "/";
+  return normalizeApiPath(
+    rawPrefix.startsWith("/") ? rawPrefix : `/${rawPrefix}`
+  );
+}
+
 function extractNestRoutes(
   text: string,
   file: SnapshotFile,
   nodes: ArtifactNode[],
-  routePaths: Map<string, string>
+  routePaths: Map<string, string>,
+  mask: Uint8Array
 ): void {
-  const controllerMatch = text.match(
-    /@Controller\s*\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)/
-  );
-  if (!controllerMatch) return;
-  const rawPrefix = controllerMatch[1] ?? "/";
-  const prefix = normalizeApiPath(
-    rawPrefix.startsWith("/") ? rawPrefix : `/${rawPrefix}`
-  );
+  const prefix = nestControllerPrefix(text);
+  if (prefix === null) return;
+  // Tolerate any number of intervening decorators (e.g. @UseGuards(...),
+  // @HttpCode(201)) and modifiers between the HTTP method decorator and the
+  // handler method name.
   const routeRegex =
-    /@(Get|Post|Put|Patch|Delete)\s*\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)\s*(?:public\s+|private\s+|protected\s+|async\s+|static\s+)*([A-Za-z_$][\w$]*)/g;
+    /@(Get|Post|Put|Patch|Delete)\s*\(\s*(?:["'`]([^"'`]*)["'`])?\s*\)\s*(?:@[A-Za-z_$][\w$]*\s*(?:\([^)]*\))?\s*|public\s+|private\s+|protected\s+|readonly\s+|async\s+|static\s+|override\s+)*([A-Za-z_$][\w$]*)\s*\(/g;
   for (const match of text.matchAll(routeRegex)) {
+    if (!isCodeIndex(mask, match.index ?? 0)) continue;
     const method = match[1].toUpperCase();
     const path = joinApiPath(prefix, match[2] ?? "/");
     const locator = `${method} ${path}`;
@@ -152,14 +220,25 @@ function extractNestRoutes(
   }
 }
 
+// An outbound HTTP call to an absolute external URL (e.g. a third-party API
+// like https://api.stripe.com/...) is not a UI action against this repo's own
+// API surface, so it must not become a traceable UI_ACTION. Only same-origin
+// relative paths represent UI-to-API edges worth tracing.
+function isExternalUrl(rawPath: string): boolean {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(rawPath);
+}
+
 function extractFrontendApiCalls(
   text: string,
   file: SnapshotFile,
-  nodes: ArtifactNode[]
+  nodes: ArtifactNode[],
+  mask: Uint8Array
 ): void {
   const axiosRegex =
     /\baxios\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
   for (const match of text.matchAll(axiosRegex)) {
+    if (!isCodeIndex(mask, match.index ?? 0)) continue;
+    if (isExternalUrl(match[2])) continue;
     const method = match[1].toUpperCase();
     const path = normalizeApiPath(match[2]);
     const operation = `${method} ${path}`;
@@ -182,6 +261,8 @@ function extractFrontendApiCalls(
   }
   const fetchRegex = /\bfetch\s*\(\s*["'`]([^"'`]+)["'`]/gi;
   for (const match of text.matchAll(fetchRegex)) {
+    if (!isCodeIndex(mask, match.index ?? 0)) continue;
+    if (isExternalUrl(match[1])) continue;
     const path = normalizeApiPath(match[1]);
     const nearby = text.slice(match.index ?? 0, (match.index ?? 0) + 400);
     const method =
@@ -292,15 +373,15 @@ function extractMarkdownRequirements(
   }
 }
 
-function extractMounts(text: string, mounts: RouterMount[]): void {
+function extractMounts(
+  text: string,
+  mounts: RouterMount[],
+  mask: Uint8Array
+): void {
   const mountRegex =
     /\b([A-Za-z_$][\w$]*)\.use\s*\(\s*["'`]([^"'`]+)["'`]\s*,\s*([A-Za-z_$][\w$]*)/gi;
   for (const match of text.matchAll(mountRegex)) {
-    const linePrefix = text.slice(
-      text.lastIndexOf("\n", match.index ?? 0) + 1,
-      match.index
-    );
-    if (linePrefix.includes("//")) continue;
+    if (!isCodeIndex(mask, match.index ?? 0)) continue;
     mounts.push({
       parent: match[1],
       prefix: normalizeApiPath(match[2]),
@@ -550,18 +631,88 @@ function extractMermaid(
   }
 }
 
+const ASSERTION_TOKENS = [
+  "expect(",
+  ".expect(",
+  "assert(",
+  "assert.",
+  ".should",
+  "should(",
+  "t.is(",
+  "t.deepequal(",
+  "t.throws(",
+  "t.notthrows(",
+  "t.truthy(",
+  "t.falsy(",
+  "t.snapshot(",
+  "t.assert.",
+  "tomatchsnapshot",
+  "tomatchinlinesnapshot",
+  "tomatchfilesnapshot",
+  "expect.assertions(",
+  "expect.hasassertions(",
+  "cy.should(",
+  ".rejects",
+  ".resolves"
+];
+
+function classifyTestBody(
+  maskedText: string,
+  titleParenIndex: number
+): { bodyStatements: number; assertionCount: number; assertionStyles: string } {
+  const args = callArgs(maskedText, titleParenIndex);
+  if (args.length === 0) {
+    return { bodyStatements: 0, assertionCount: 0, assertionStyles: "" };
+  }
+  const callback = args[args.length - 1];
+  const span = bodySpanOf(maskedText, callback[0], callback[1]);
+  if (!span) {
+    return { bodyStatements: 0, assertionCount: 0, assertionStyles: "" };
+  }
+  const bodyStatements = countTopLevelStatements(
+    maskedText,
+    span.start,
+    span.end
+  );
+  const body = maskedText.slice(span.start, span.end).toLowerCase();
+  const styles = new Set<string>();
+  for (const token of ASSERTION_TOKENS) {
+    if (body.includes(token)) styles.add(token.replace(/[.(]/g, ""));
+  }
+  return {
+    bodyStatements,
+    assertionCount: styles.size,
+    assertionStyles: [...styles].sort().join(",")
+  };
+}
+
 function extractTests(
   text: string,
   file: SnapshotFile,
-  nodes: ArtifactNode[]
+  nodes: ArtifactNode[],
+  mask: Uint8Array,
+  maskedText: string
 ): void {
-  const testRegex = /\b(?:it|test)\s*\(\s*["'`]([^"'`]+)["'`]/g;
+  // Match it / test / fit / xit with an optional modifier (.only, .skip, .todo,
+  // .each(...), .concurrent, .failing) and an optional chained call for
+  // parameterised tests, e.g. it.each([...])("title", ...).
+  const testRegex =
+    /\b(it|test|fit|xit)(?:\.(only|skip|todo|each|concurrent|failing))?\s*(?:\([^)]*\)\s*)?\(\s*["'`]([^"'`]+)["'`]/g;
   for (const match of text.matchAll(testRegex)) {
-    const title = match[1];
+    if (!isCodeIndex(mask, match.index ?? 0)) continue;
+    const name = match[1].toLowerCase();
+    const title = match[3];
+    let modifier = match[2]?.toLowerCase() ?? "none";
+    if (name === "fit") modifier = "only";
+    if (name === "xit") modifier = "skip";
+
+    const attributes: Record<string, string | number> = {
+      source: "test",
+      modifier
+    };
     const operationMatch = title.match(
       /^\s*(GET|POST|PUT|PATCH|DELETE)\s+(\/[^\s"'`]+)/i
     );
-    const attributes: Record<string, string> = { source: "test" };
     if (operationMatch) {
       const method = operationMatch[1].toUpperCase();
       const path = normalizeApiPath(operationMatch[2]);
@@ -573,6 +724,22 @@ function extractTests(
     if (scenarioMatch) {
       attributes.scenario = scenarioMatch[1].trim();
     }
+
+    // The title paren is the last real `(` within the match span. Search the
+    // masked text so a `(` inside the title string (e.g. it("returns (200)"))
+    // is a space and cannot be mistaken for the call paren.
+    const titleParen = maskedText.lastIndexOf(
+      "(",
+      (match.index ?? 0) + match[0].length
+    );
+    const { bodyStatements, assertionCount, assertionStyles } = classifyTestBody(
+      maskedText,
+      titleParen
+    );
+    attributes.bodyStatements = bodyStatements;
+    attributes.assertionCount = assertionCount;
+    if (assertionStyles) attributes.assertionStyles = assertionStyles;
+
     nodes.push(
       node(
         "TEST_CASE",
@@ -777,21 +944,33 @@ export async function extractArtifacts(
   for (const file of files) {
     if (file.bytes > 2_000_000) continue;
     const extension = extname(file.relativePath).toLowerCase();
-    if (![".ts", ".tsx", ".js", ".mjs", ".json", ".yaml", ".yml", ".mmd", ".md"].includes(extension)) {
+    if (![...CODE_EXTENSIONS, ".json", ".yaml", ".yml", ".mmd", ".md"].includes(extension)) {
       continue;
     }
     const text = await readFile(
       `${snapshotDirectory}/${file.relativePath}`,
       "utf8"
     );
-    if ([".ts", ".tsx", ".js", ".mjs"].includes(extension)) {
-      extractMounts(text, mounts);
-      extractRoutes(text, file, nodes, routePaths);
-      extractNestRoutes(text, file, nodes, routePaths);
-      extractFrontendApiCalls(text, file, nodes);
+    if (CODE_EXTENSIONS.includes(extension)) {
+      const mask = computeCodeMask(text);
+      const isTestFile = TEST_FILE_PATTERN.test(file.relativePath);
+      extractMounts(text, mounts, mask);
+      extractRoutes(text, file, nodes, routePaths, mask);
+      extractNestRoutes(text, file, nodes, routePaths, mask);
+      // A backend/server file that registers routes should not have its
+      // outbound HTTP client calls (e.g. axios to a third-party API) treated as
+      // UI actions. Only mine frontend calls when the file declares no routes.
+      const declaresRoutes = nodes.some(
+        (item) =>
+          item.kind === "API_OPERATION" &&
+          item.evidence.relativePath === file.relativePath
+      );
+      if (!declaresRoutes && !isTestFile) {
+        extractFrontendApiCalls(text, file, nodes, mask);
+      }
       extractCodeSymbols(text, file, nodes);
-      if (/\.(?:spec|test|cy)\.[cm]?[jt]sx?$/.test(file.relativePath)) {
-        extractTests(text, file, nodes);
+      if (isTestFile) {
+        extractTests(text, file, nodes, mask, maskNonCode(text));
       }
     }
     if (extension === ".json") {

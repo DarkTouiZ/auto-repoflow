@@ -215,12 +215,24 @@ export const GOLDEN_FIXTURES: GoldenFixture[] = [
   {
     name: "nestjs-openapi",
     files: NESTJS_OPENAPI,
-    // BUG A: NestJS routes + OpenAPI are extracted then discarded by the
-    // source-whitelist filters in buildEvaluationReport, so every coverage lane
-    // is 0/0 and no route-level finding fires — the dangerous "0 test gaps"
-    // output. Phase 4 will change this; update these expectations then.
-    expectedRuleIds: ["ARF-CI-001", "ARF-QUALITY-002"],
-    expectedCoverage: []
+    // FIXED (Phase 4, partial): NestJS routes now participate in coverage and
+    // route rules, so the endpoint's missing test is reported (ARF-TEST-001)
+    // instead of the dangerous "0% coverage, 0 test gaps" output. The OpenAPI
+    // requirement is still not linked (api-spec=0/1) — widening the requirement
+    // source set is deferred until the external MileMesh gate can validate it.
+    expectedRuleIds: [
+      "ARF-API-001",
+      "ARF-CI-001",
+      "ARF-QUALITY-002",
+      "ARF-TEST-001"
+    ],
+    expectedCoverage: [
+      "api-spec-readiness=0/1",
+      "api-spec=0/1",
+      "implementation=1/1",
+      "test-plan=0/1",
+      "test=0/1"
+    ]
   },
   {
     name: "library-no-routes",
@@ -232,35 +244,59 @@ export const GOLDEN_FIXTURES: GoldenFixture[] = [
   {
     name: "agent-slop",
     files: AGENT_SLOP,
-    // BUG B: the empty test `it("GET /api/orders", () => {})` is counted as
-    // VERIFIED_BY (test=1/1) purely from its title, so ARF-TEST-001 never
-    // fires; it.only / it.skip / the assertion-free "renders" test are all
-    // invisible. This is the core product bug. Phase 1/2 will change this.
-    expectedRuleIds: ["ARF-API-001", "ARF-CI-001", "ARF-QUALITY-002"],
+    // FIXED (Phase 2): the empty test `it("GET /api/orders", () => {})` no
+    // longer counts as verification (test=0/1), so ARF-TEST-001 fires for the
+    // untested endpoint, and the agent-failure rules now catch the empty test
+    // (ARF-TEST-EMPTY-001), the focused test (ARF-TEST-FOCUS-001), the skipped
+    // test (ARF-TEST-SKIP-001), and the assertion-free "renders" test
+    // (ARF-TEST-ASSERT-001). This is the core product bug, now resolved.
+    expectedRuleIds: [
+      "ARF-API-001",
+      "ARF-CI-001",
+      "ARF-QUALITY-002",
+      "ARF-TEST-001",
+      "ARF-TEST-ASSERT-001",
+      "ARF-TEST-EMPTY-001",
+      "ARF-TEST-FOCUS-001",
+      "ARF-TEST-SKIP-001"
+    ],
     expectedCoverage: [
       "api-spec-readiness=0/1",
       "api-spec=0/1",
       "implementation=1/1",
       "test-plan=0/1",
-      "test=1/1"
+      "test=0/1"
     ]
   },
   {
     name: "jsx-cjs",
     files: JSX_CJS,
-    // BUG D: .jsx and .cjs are not in the extraction allowlist, so the route in
-    // server/routes.cjs and the fetch in src/App.jsx are invisible; only the
-    // package.json hygiene rule fires. Phase 1 will add these extensions.
-    expectedRuleIds: ["ARF-QUALITY-002"],
-    expectedCoverage: []
+    // FIXED (Phase 1): .jsx and .cjs are now in the extraction allowlist, so
+    // the route in server/routes.cjs is visible (ARF-API-001 + ARF-TEST-001
+    // for the untested endpoint) and the fetch in src/App.jsx links UI to API
+    // (ui-api=1/1). Previously only ARF-QUALITY-002 fired.
+    expectedRuleIds: [
+      "ARF-API-001",
+      "ARF-CI-001",
+      "ARF-QUALITY-002",
+      "ARF-TEST-001"
+    ],
+    expectedCoverage: [
+      "api-spec-readiness=0/1",
+      "api-spec=0/1",
+      "implementation=1/1",
+      "test-plan=0/1",
+      "test=0/1",
+      "ui-api=1/1"
+    ]
   },
   {
     name: "absolute-url-backend",
     files: ABSOLUTE_URL_BACKEND,
-    // BUG: extractFrontendApiCalls runs on backend files, so a server-side
-    // axios.post to api.stripe.com becomes a UI_ACTION and raises a false
-    // ARF-UI-001. Phase 1 will skip backend files here.
-    expectedRuleIds: ["ARF-QUALITY-002", "ARF-UI-001"],
-    expectedCoverage: ["ui-api=0/1"]
+    // FIXED (Phase 1): a server-side axios.post to an absolute external URL
+    // (api.stripe.com) is no longer treated as a UI action, so the previous
+    // false ARF-UI-001 is gone. Only the package.json hygiene rule remains.
+    expectedRuleIds: ["ARF-QUALITY-002"],
+    expectedCoverage: []
   }
 ];

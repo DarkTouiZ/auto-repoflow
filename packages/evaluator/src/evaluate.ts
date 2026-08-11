@@ -21,16 +21,9 @@ function tokens(value: string): Set<string> {
       .filter(
         (part) =>
           part.length >= 3 &&
-          ![
-            "api",
-            "param",
-            "backoffice",
-            "get",
-            "post",
-            "put",
-            "patch",
-            "delete"
-          ].includes(part)
+          !["api", "param", "get", "post", "put", "patch", "delete"].includes(
+            part
+          )
       )
   );
 }
@@ -179,10 +172,17 @@ export function buildEvaluationReport(input: {
   scopePrefix?: string;
 }): EvaluationReport {
   const { nodes, routePaths, postmanPaths } = input.extracted;
+  // Server-route sources whose operations participate in coverage and route
+  // rules. NestJS routes were previously extracted but silently discarded here,
+  // producing the dangerous "0% coverage, 0 test gaps" report on Nest repos.
+  const IMPLEMENTED_ROUTE_SOURCES = new Set([
+    "express-route",
+    "nestjs-route"
+  ]);
   const allRoutes = nodes.filter(
     (item) =>
       item.kind === "API_OPERATION" &&
-      item.attributes?.source === "express-route"
+      IMPLEMENTED_ROUTE_SOURCES.has(String(item.attributes?.source))
   );
   const allRequirements = nodes.filter(
     (item) =>
@@ -200,9 +200,19 @@ export function buildEvaluationReport(input: {
   const draftRequirements = requirements.filter((item) =>
     isDraftReviewStatus(item.attributes?.reviewStatus)
   );
-  const tests = nodes.filter(
+  // Every test the extractor found in this repo (including skipped, todo, and
+  // empty ones) — used only to emit test-quality findings, never as coverage.
+  const allTestCases = nodes.filter(
     (item) =>
       item.kind === "TEST_CASE" && item.attributes?.source === "test"
+  );
+  // Tests that actually qualify as verification evidence: not skipped/todo and
+  // with a non-empty body. A well-titled but empty test (the classic AI-agent
+  // failure mode) must not mark an endpoint verified.
+  const tests = allTestCases.filter(
+    (item) =>
+      !["skip", "todo"].includes(String(item.attributes?.modifier ?? "none")) &&
+      Number(item.attributes?.bodyStatements ?? 1) > 0
   );
   const plannedTests = nodes.filter(
     (item) =>
@@ -464,13 +474,17 @@ export function buildEvaluationReport(input: {
       );
     }
 
+    // A test verifies a route only by an exact HTTP method + normalized path
+    // match from its title (or an in-title operation). Vocabulary overlap on the
+    // test name is no longer accepted: "renders the orders table" must not mark
+    // GET /api/orders as verified.
     const test = tests
       .map((candidate) => ({
         candidate,
         score:
           candidate.attributes?.method && candidate.attributes?.path
             ? apiOperationMatch(route, candidate)
-            : overlap(route.locator, candidate.name)
+            : 0
       }))
       .sort((a, b) => b.score - a.score)[0];
     if (test && test.score > 0) {
@@ -480,10 +494,8 @@ export function buildEvaluationReport(input: {
           "VERIFIED_BY",
           route,
           test.candidate,
-          Math.max(0.5, test.score),
-          test.candidate.attributes?.operation
-            ? "Exact HTTP method and normalized path from the test title"
-            : "Shared operation and test vocabulary"
+          test.score,
+          "Exact HTTP method and normalized path from the test title"
         )
       );
     } else {
@@ -577,6 +589,87 @@ export function buildEvaluationReport(input: {
           "Implement the scenario or record the external boundary that blocks it."
         )
       );
+    }
+  }
+
+  // Test-quality rules — the failure modes an AI coding agent typically leaves
+  // behind. These read attributes computed by the extractor; no file is opened
+  // here.
+  const skippedByFile = new Map<string, ArtifactNode[]>();
+  for (const testCase of allTestCases) {
+    const modifier = String(testCase.attributes?.modifier ?? "none");
+    const bodyStatements = Number(testCase.attributes?.bodyStatements ?? 1);
+    const assertionCount = Number(testCase.attributes?.assertionCount ?? 1);
+
+    if (modifier === "only") {
+      findings.push(
+        finding(
+          "ARF-TEST-FOCUS-001",
+          "FAIL",
+          `Focused test left in the suite: ${testCase.name}`,
+          "A focused test (it.only/fit/fdescribe) silently disables every other test in its file. CI stays green while coverage collapses.",
+          [testCase.evidence],
+          "Remove the .only/f-prefix so the whole suite runs."
+        )
+      );
+    }
+
+    if (modifier === "skip" || modifier === "todo") {
+      const list = skippedByFile.get(testCase.evidence.relativePath) ?? [];
+      list.push(testCase);
+      skippedByFile.set(testCase.evidence.relativePath, list);
+      continue;
+    }
+
+    if (bodyStatements === 0) {
+      findings.push(
+        finding(
+          "ARF-TEST-EMPTY-001",
+          "FAIL",
+          `Empty test body: ${testCase.name}`,
+          "This test has no body, so it passes unconditionally and verifies nothing. A well-titled empty test is a common AI-generated placeholder.",
+          [testCase.evidence],
+          "Implement the test body with real assertions, or remove the test."
+        )
+      );
+    } else if (assertionCount === 0) {
+      findings.push(
+        finding(
+          "ARF-TEST-ASSERT-001",
+          "UNVERIFIED",
+          `No recognized assertion: ${testCase.name}`,
+          "This test runs code but contains no recognized assertion (expect/assert/should/snapshot/…). It may pass without verifying behaviour.",
+          [testCase.evidence],
+          "Add an assertion, or confirm the assertion is delegated to a helper."
+        )
+      );
+    }
+  }
+  for (const [file, skipped] of skippedByFile) {
+    if (skipped.length > 3) {
+      findings.push(
+        finding(
+          "ARF-TEST-SKIP-001",
+          "UNVERIFIED",
+          `${skipped.length} skipped or todo tests in ${file}`,
+          "Skipped and todo tests are not coverage. A cluster of them can hide a disabled feature.",
+          [skipped[0].evidence],
+          "Re-enable or remove the skipped tests."
+        )
+      );
+    } else {
+      for (const testCase of skipped) {
+        findings.push(
+          finding(
+            "ARF-TEST-SKIP-001",
+            "UNVERIFIED",
+            `Skipped or todo test: ${testCase.name}`,
+            "Skipped and todo tests are not treated as coverage.",
+            [testCase.evidence],
+            "Re-enable or remove the skipped test."
+          )
+        );
+      }
     }
   }
 

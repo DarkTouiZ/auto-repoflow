@@ -250,7 +250,7 @@ describe("evidence evaluator", () => {
       'app.post("/api/widgets/:widgetId", updateWidget);'
     ].join("\n");
     const tests = [
-      'it("GET /api/widgets/:param returns a mock widget", async () => {});'
+      'it("GET /api/widgets/:param returns a mock widget", async () => { expect(true).toBe(true); });'
     ].join("\n");
     await writeFile(join(sandbox, "routes.ts"), routes);
     await writeFile(join(sandbox, "routes.test.ts"), tests);
@@ -313,7 +313,7 @@ describe("evidence evaluator", () => {
       "        reason: authorization is planned after the POC"
     ].join("\n");
     const tests = [
-      'it("GET /api/widgets [scenario: populated mock result]", async () => {});',
+      'it("GET /api/widgets [scenario: populated mock result]", async () => { expect(true).toBe(true); });',
       'it.todo("GET /api/widgets [scenario: permission behavior requires confirmation]");'
     ].join("\n");
     await writeFile(join(sandbox, "routes.ts"), routes);
@@ -618,7 +618,7 @@ describe("config-driven evaluation pipeline", () => {
     const routes =
       'app.get("/api/mock/items", listItems); export function listItems() {}';
     const tests =
-      'it("GET /api/mock/items returns mock items", async () => {});';
+      'it("GET /api/mock/items returns mock items", async () => { expect(true).toBe(true); });';
     await writeFile(join(source, "routes.ts"), routes);
     await writeFile(join(source, "routes.test.ts"), tests);
     await createMockQualityTool({
