@@ -8,8 +8,9 @@ Auto-RepoFlow is a privacy-first, headless engineering-evidence auditor and
 guided local change verifier. It connects requirements, design, APIs, code,
 tests, and CI, then produces a validated Fix Packet for the IDE agent the user
 already controls. Version 0.3 can isolate and verify one JavaScript/TypeScript
-test-gap patch; it never invokes an agent, pushes, opens a pull request, merges,
-deploys, or publishes.
+test-gap patch. The 0.4 source candidate adds diff-scoped review of code an IDE
+agent just wrote, including optional line coverage. AutoRepoFlow never invokes
+an agent, pushes, opens a pull request, merges, deploys, or publishes.
 
 This public repository contains no company source code, internal endpoint,
 private record, credential, or proprietary schema.
@@ -37,6 +38,9 @@ npx auto-repoflow@0.3.0 scan .
 For source-checkout development, run `npm install`, `npm run build`, and
 `node apps/cli/dist/main.js <command>`.
 
+The source checkout is preparing `0.4.0`; npm remains at `0.3.0` until a
+maintainer approves the GitHub release and OIDC publication.
+
 The zero-config command is non-interactive. `--ai auto` probes only a
 configured Ollama model over HTTP loopback and falls back successfully to
 deterministic rules. It never downloads a model or falls back to cloud.
@@ -54,8 +58,34 @@ and packets default to schema v2; `--compat v1` preserves the v0.1 packet
 contract in v0.3. The deprecated `--mode rules|local-ai` remains available for
 compatibility.
 
-JavaScript and TypeScript are the only languages with stable v0.3 coverage.
+JavaScript and TypeScript are the only languages with stable coverage.
 Other languages must be treated as partial/unsupported, not as fully covered.
+
+## Review what an IDE agent changed
+
+`review` scopes deterministic findings to the Git diff instead of asking the
+next agent to read the whole repository. It does not execute tests. When a
+fresh LCOV or Istanbul report exists, it checks whether added lines ran and
+fails changed source that is absent from coverage.
+
+```bash
+# Uncommitted, staged, and untracked work versus HEAD
+node apps/cli/dist/main.js review .
+
+# Only staged work, or the full branch versus its merge base
+node apps/cli/dist/main.js review . --staged
+node apps/cli/dist/main.js review . --base main
+
+# Explicit coverage and a bounded handoff packet
+node apps/cli/dist/main.js review . \
+  --coverage coverage/lcov.info \
+  --format agent-md --top 10 --max-bytes 12000
+```
+
+The public review rules include `ARF-CHANGE-TEST-001` for a new untested
+endpoint, `ARF-CHANGE-COVERAGE-001` for uncovered or missing changed source,
+and `ARF-COVERAGE-STALE-001` when coverage predates the diff. Review Packet
+schema v1 and scan/report schema v2 remain backward compatible.
 
 ## Guided before/after demo
 
@@ -319,6 +349,10 @@ still follows the separate mentor review protocol.
 npm install
 npm run doctor
 npm run check
+npm run package:smoke
+npm run benchmark:gate:required -- \
+  --target /pristine/milemesh-mock \
+  --ledger /pristine/milemesh-mock/benchmark/expected-findings.json
 ```
 
 For evaluation pipelines, known-gap scoring, MileMesh synthetic benchmarking,
@@ -329,10 +363,12 @@ and human-pilot reporting, see:
 - [Thai system flow guide](docs/SYSTEM_FLOW_GUIDE_TH.md)
 - [Privacy model](docs/PRIVACY.md)
 
-Contract compatibility tests and human acceptance are separate evidence. The
-poster should compare rules and local-AI runs independently and report human
-acceptance/reclassification plus time-to-proposal. Raw worksheets stay outside
-Git.
+Contract compatibility, synthetic known-gap scoring, dogfood packet reduction,
+and human acceptance are separate evidence. The only exact accuracy statement
+supported by the current reviewed ledger is "22/22 findings at 100% precision
+and recall on the MileMesh synthetic benchmark." It is not a general accuracy
+claim. Human acceptance/reclassification and time-to-proposal require a real,
+counterbalanced reviewer worksheet; raw worksheets stay outside Git.
 
 Release evidence must report replay, assisted trials, manual outcomes, and
 human acceptance separately. The two-person trial is descriptive evidence

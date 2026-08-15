@@ -125,7 +125,11 @@ function runCli(cliPath, args) {
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     encoding: "utf8",
     timeout: 300_000,
-    maxBuffer: 50 * 1024 * 1024
+    maxBuffer: 50 * 1024 * 1024,
+    // The benchmark uses synthetic ground-truth fixtures that carry the
+    // privileged `approved_for_synthetic_benchmark` review status. Honor it only
+    // in this trusted benchmark context; ordinary scans do not set this.
+    env: { ...process.env, ARF_ALLOW_SYNTHETIC_APPROVAL: "1" }
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {

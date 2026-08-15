@@ -13,10 +13,15 @@ import {
   cleanupChangeRun,
   createAgentFixPacket,
   createCompatibleReport,
+  createReviewPacket,
   exportEvidenceDrafts,
   exportLocalMetrics,
   formatAgentFixPacketMarkdown,
   formatHumanReport,
+  formatReviewPacketMarkdown,
+  formatReviewReport,
+  reviewRepository,
+  type ReviewScope,
   listEvidenceDrafts,
   loadAutomationPolicy,
   outcomeTrialStatus,
@@ -42,7 +47,7 @@ import {
 } from "@auto-repoflow/evaluator";
 import type { AiProviderName, AiRequestMode } from "@auto-repoflow/domain";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const scanFormats = ["human", "json", "agent-md", "agent-json"] as const;
 type ScanFormat = (typeof scanFormats)[number];
 
@@ -54,7 +59,9 @@ function parseArguments(values: string[]): {
     "keep-snapshot",
     "allow-cloud-metadata",
     "allow-verification",
-    "confirm"
+    "confirm",
+    "staged",
+    "all"
   ]);
   const flags = new Map<string, string>();
   const positionals: string[] = [];
@@ -118,8 +125,17 @@ function printHelp(): void {
 Quick start:
   auto-repoflow demo [--scenario delivery-list|delivery-status] [--mode replay|handoff]
   auto-repoflow scan [path]
+  auto-repoflow review [path]           Review what your agent just wrote (git diff)
   auto-repoflow scan [path] --format agent-md --out fix-packet.md
   auto-repoflow scan [path] --format agent-json --out fix-packet.json
+
+Review options (auto-repoflow review [path]):
+  --staged              Only staged changes vs HEAD
+  --base <ref>          merge-base(<ref>, HEAD)..worktree
+  --format <format>     human | json | agent-md
+  --top <n>             Max findings in the packet (default 10)
+  --severity <min>      info | low | medium | high minimum severity
+  --max-bytes <n>       Hard byte budget for the packet
 
 Scan options:
   --project <label>     Private project label (defaults to directory name)
@@ -411,6 +427,94 @@ async function runScan(args: string[]): Promise<void> {
     ),
     optionalFlag(flags, "out")
   );
+}
+
+const reviewFormats = ["human", "json", "agent-md"] as const;
+type ReviewFormat = (typeof reviewFormats)[number];
+
+async function runReview(args: string[]): Promise<void> {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(
+      [
+        "Usage: auto-repoflow review [path] [options]",
+        "",
+        "Review the code your coding agent just wrote, scoped to the git diff.",
+        "",
+        "  (default)         uncommitted work (worktree + staged + untracked) vs HEAD",
+        "  --staged          only staged changes vs HEAD",
+        "  --base <ref>      merge-base(<ref>, HEAD)..worktree",
+        "  --coverage <file> lcov.info or coverage-final.json (auto-discovered)",
+        "  --format          human (default) | json | agent-md",
+        "  --top <n>         max findings in the packet (default 10)",
+        "  --severity <min>  info|low|medium|high minimum severity",
+        "  --max-bytes <n>   hard byte budget for the packet",
+        "  --out <file>      write output to a private file"
+      ].join("\n")
+    );
+    return;
+  }
+
+  const { flags, positionals } = parseArguments(args);
+  const sourcePath = positionals[0] ?? ".";
+
+  let scope: ReviewScope = "worktree";
+  let baseRef: string | undefined;
+  if (flags.has("staged")) scope = "staged";
+  if (flags.has("base")) {
+    scope = "base";
+    baseRef = optionalFlag(flags, "base");
+    if (!baseRef) throw new Error("--base requires a git ref");
+  }
+
+  const format = (optionalFlag(flags, "format") ?? "human") as ReviewFormat;
+  if (!reviewFormats.includes(format)) {
+    throw new Error(`--format must be one of: ${reviewFormats.join(", ")}`);
+  }
+
+  const result = await reviewRepository(new EvaluationService(), sourcePath, {
+    scope,
+    baseRef,
+    projectName: optionalFlag(flags, "project"),
+    coveragePath: optionalFlag(flags, "coverage")
+  });
+
+  const top = optionalFlag(flags, "top");
+  const severity = optionalFlag(flags, "severity");
+  const maxBytes = optionalFlag(flags, "max-bytes");
+  const packet = createReviewPacket({
+    projectName: result.report.projectName,
+    baseRef: result.changeSet.baseRef,
+    changedFiles: result.changeSet.files.map((file) => file.path),
+    findings: result.scopedFindings,
+    baselines: result.baselines,
+    totalFindings: result.report.findings.length,
+    outOfScopeCount: result.outOfScopeCount,
+    options: {
+      top: top ? Number(top) : undefined,
+      severity: severity
+        ? (severity.toUpperCase() as "INFO" | "LOW" | "MEDIUM" | "HIGH")
+        : undefined,
+      maxBytes: maxBytes ? Number(maxBytes) : undefined
+    }
+  });
+
+  let output: string;
+  if (format === "json") {
+    output = `${JSON.stringify(packet, null, 2)}\n`;
+  } else if (format === "agent-md") {
+    output = formatReviewPacketMarkdown(packet);
+  } else {
+    output = formatReviewReport({
+      projectName: result.report.projectName,
+      baseRef: result.changeSet.baseRef,
+      changedFiles: result.changeSet.files.length,
+      scopedFindings: result.scopedFindings,
+      outOfScopeCount: result.outOfScopeCount,
+      packetSize: packet.metrics.packet,
+      baselines: result.baselines
+    });
+  }
+  await emitOutput(output, optionalFlag(flags, "out"));
 }
 
 async function runEvidence(
@@ -1092,6 +1196,10 @@ export async function runCli(argv = process.argv.slice(2)): Promise<void> {
   }
   if (command === "scan") {
     await runScan([action, ...rest].filter((value): value is string => Boolean(value)));
+    return;
+  }
+  if (command === "review") {
+    await runReview([action, ...rest].filter((value): value is string => Boolean(value)));
     return;
   }
   if (command === "demo") {

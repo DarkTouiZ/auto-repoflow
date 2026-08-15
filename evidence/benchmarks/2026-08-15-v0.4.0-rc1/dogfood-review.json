@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "kind": "auto-repoflow-review-productivity-proxy",
+  "generatedAt": "2026-08-15T06:46:48.459Z",
+  "toolRevision": "e80aa78d7ce7ca3de5b5dbd79bc16773c366f642",
+  "scope": {
+    "baseRef": "7b3c94ef86784186746a8fcf0d2a45643711e64d",
+    "changedFileCount": 32
+  },
+  "reviewPacket": {
+    "bytes": 3458,
+    "estimatedTokens": 865,
+    "estimator": "bytes-div-4"
+  },
+  "baselines": {
+    "gitDiff": {
+      "bytes": 148538,
+      "estimatedTokens": 37135,
+      "estimator": "bytes-div-4"
+    },
+    "changedFiles": {
+      "bytes": 619870,
+      "estimatedTokens": 154968,
+      "estimator": "bytes-div-4"
+    }
+  },
+  "inputReductionVsGitDiffPercent": 97.7,
+  "inputReductionVsChangedFilesPercent": 99.4,
+  "interpretation": "Productivity proxy only. Packet-size reduction is not evidence of review quality, correctness, or time saved.",
+  "privacy": {
+    "sourceRootStored": false,
+    "publicExportReviewed": true
+  }
+}
+
+

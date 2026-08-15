@@ -292,3 +292,253 @@ export function formatHumanReport(report: EvaluationReport): string {
   );
   return `${lines.join("\n")}\n`;
 }
+
+// ---------------------------------------------------------------------------
+// Review packet — the compact, change-scoped handoff produced by `review`.
+// ---------------------------------------------------------------------------
+
+export interface ArtifactSizeLike {
+  bytes: number;
+  estimatedTokens: number;
+  estimator: string;
+}
+
+export interface ReviewPacketInput {
+  projectName: string;
+  baseRef: string;
+  changedFiles: string[];
+  findings: Finding[];
+  baselines: {
+    gitDiff: ArtifactSizeLike;
+    changedFiles: ArtifactSizeLike;
+  };
+  totalFindings: number;
+  outOfScopeCount: number;
+  options?: {
+    top?: number;
+    severity?: Finding["severity"];
+    maxEvidence?: number;
+    maxBytes?: number;
+  };
+}
+
+const SEVERITY_RANK: Record<Finding["severity"], number> = {
+  HIGH: 0,
+  MEDIUM: 1,
+  LOW: 2,
+  INFO: 3
+};
+
+const DEFAULT_REVIEW_ACCEPTANCE = [
+  "Resolve or explicitly reclassify the rule with evidence.",
+  "Preserve previously passing project checks.",
+  "Record the files changed and the verification performed."
+];
+
+export interface ReviewPacket {
+  kind: "auto-repoflow-review-packet";
+  schemaVersion: 1;
+  generatedAt: string;
+  project: { label: string; sourceRootStored: false };
+  scope: {
+    baseRef: string;
+    changedFiles: string[];
+    allowedFiles: string[];
+    instruction: string;
+  };
+  constraints: string[];
+  defaults: { acceptanceCriteria: string[] };
+  findings: Array<{
+    id: string;
+    ruleId: string;
+    severity: Finding["severity"];
+    status: Finding["status"];
+    problem: string;
+    whyItMatters: string;
+    evidence: Array<{ relativePath: string; line?: number; sha256: string }>;
+    suggestedAction: string;
+  }>;
+  metrics: {
+    findingsIncluded: number;
+    findingsTotal: number;
+    outOfScope: number;
+    truncated: boolean;
+    packet: ArtifactSizeLike;
+    baselines: {
+      gitDiff: ArtifactSizeLike;
+      changedFiles: ArtifactSizeLike;
+    };
+  };
+}
+
+function reviewPacketFindings(input: ReviewPacketInput) {
+  const minSeverity = input.options?.severity
+    ? SEVERITY_RANK[input.options.severity]
+    : SEVERITY_RANK.INFO;
+  const maxEvidence = input.options?.maxEvidence ?? 3;
+  return [...input.findings]
+    .filter((finding) => SEVERITY_RANK[finding.severity] <= minSeverity)
+    .sort((left, right) => findingPriority(left) - findingPriority(right))
+    .slice(0, input.options?.top ?? 10)
+    .map((finding) => ({
+      id: finding.id,
+      ruleId: finding.ruleId,
+      severity: finding.severity,
+      status: finding.status,
+      problem: finding.title,
+      whyItMatters: finding.explanation,
+      evidence: finding.evidence.slice(0, maxEvidence).map((item) => ({
+        relativePath: item.relativePath,
+        line: item.line,
+        sha256: item.sha256
+      })),
+      suggestedAction:
+        finding.suggestedAction ??
+        "Inspect the referenced evidence and propose the smallest reviewable change."
+    }));
+}
+
+export function createReviewPacket(input: ReviewPacketInput): ReviewPacket {
+  let findings = reviewPacketFindings(input);
+
+  const build = (): ReviewPacket => ({
+    kind: "auto-repoflow-review-packet",
+    schemaVersion: 1,
+    generatedAt: new Date().toISOString(),
+    project: { label: input.projectName, sourceRootStored: false },
+    scope: {
+      baseRef: input.baseRef,
+      changedFiles: [...input.changedFiles].sort(),
+      allowedFiles: [...input.changedFiles].sort(),
+      instruction:
+        "Limit edits to allowedFiles. This packet is review evidence, not permission to edit source, config, secrets, or dependencies."
+    },
+    constraints: [...AGENT_PACKET_CONSTRAINTS],
+    defaults: { acceptanceCriteria: [...DEFAULT_REVIEW_ACCEPTANCE] },
+    findings,
+    metrics: {
+      findingsIncluded: findings.length,
+      findingsTotal: input.totalFindings,
+      outOfScope: input.outOfScopeCount,
+      truncated: findings.length < input.findings.length,
+      packet: { bytes: 0, estimatedTokens: 0, estimator: "bytes-div-4" },
+      baselines: input.baselines
+    }
+  });
+
+  let packet = build();
+  // Measure, then trim to a byte budget if requested by dropping the
+  // lowest-priority findings until the packet fits.
+  const measure = (candidate: ReviewPacket): number =>
+    Buffer.byteLength(JSON.stringify(candidate));
+  const maxBytes = input.options?.maxBytes;
+  packet.metrics.packet = sizeOfJson(packet);
+  if (maxBytes) {
+    while (findings.length > 0 && measure(packet) > maxBytes) {
+      findings = findings.slice(0, -1);
+      packet = build();
+      packet.metrics.truncated = true;
+      packet.metrics.packet = sizeOfJson(packet);
+    }
+  }
+  return packet;
+}
+
+function sizeOfJson(packet: ReviewPacket): ArtifactSizeLike {
+  // Size the packet with a zeroed size field, then it is close enough; recompute
+  // once for stability.
+  const bytes = Buffer.byteLength(JSON.stringify(packet));
+  return { bytes, estimatedTokens: Math.ceil(bytes / 4), estimator: "bytes-div-4" };
+}
+
+export function formatReviewPacketMarkdown(packet: ReviewPacket): string {
+  const lines = [
+    `# Auto-RepoFlow review — ${singleLine(packet.project.label)}`,
+    "",
+    `Base: ${packet.scope.baseRef} · Changed files: ${packet.scope.changedFiles.length}`,
+    "",
+    "## Instructions for the receiving agent",
+    ...packet.constraints.map((c) => `- ${c}`),
+    `- Allowed files: ${packet.scope.allowedFiles.map(inlineCode).join(", ") || "none"}`,
+    "",
+    "## Default acceptance criteria (apply to every finding)",
+    ...packet.defaults.acceptanceCriteria.map((c) => `- ${c}`),
+    ""
+  ];
+  if (packet.findings.length === 0) {
+    lines.push("No in-scope findings for this change.");
+  } else {
+    lines.push("## Findings");
+    packet.findings.forEach((finding, index) => {
+      lines.push(
+        `${index + 1}. **${finding.ruleId}** — ${singleLine(finding.problem)}`,
+        `   - Severity/status: ${finding.severity} / ${finding.status}`,
+        `   - Why: ${singleLine(finding.whyItMatters)}`,
+        `   - Action: ${singleLine(finding.suggestedAction)}`,
+        ...finding.evidence.map(
+          (e) => `   - Evidence: ${inlineCode(`${e.relativePath}${e.line ? `:${e.line}` : ""}`)}`
+        )
+      );
+    });
+  }
+  lines.push(
+    "",
+    `Packet: ${packet.metrics.packet.bytes} B, ~${packet.metrics.packet.estimatedTokens} tokens (${packet.metrics.packet.estimator}).`,
+    `Baseline (changed files): ${packet.metrics.baselines.changedFiles.bytes} B, ~${packet.metrics.baselines.changedFiles.estimatedTokens} tokens.`
+  );
+  return `${lines.join("\n")}\n`;
+}
+
+export function formatReviewReport(input: {
+  projectName: string;
+  baseRef: string;
+  changedFiles: number;
+  scopedFindings: Finding[];
+  outOfScopeCount: number;
+  packetSize: ArtifactSizeLike;
+  baselines: { gitDiff: ArtifactSizeLike; changedFiles: ArtifactSizeLike };
+}): string {
+  const bySeverity = (sev: Finding["severity"]) =>
+    input.scopedFindings.filter((f) => f.severity === sev).length;
+  const reduction =
+    input.baselines.changedFiles.estimatedTokens > 0
+      ? Math.max(
+          0,
+          Math.round(
+            ((input.baselines.changedFiles.estimatedTokens -
+              input.packetSize.estimatedTokens) /
+              input.baselines.changedFiles.estimatedTokens) *
+              100
+          )
+        )
+      : 0;
+  const lines = [
+    `Auto-RepoFlow review — ${singleLine(input.projectName)}`,
+    `Base: ${input.baseRef}  Changed files: ${input.changedFiles}`,
+    `Findings in scope: ${input.scopedFindings.length} (${bySeverity("HIGH")} high, ${bySeverity("MEDIUM")} medium, ${bySeverity("LOW")} low)`,
+    input.outOfScopeCount > 0
+      ? `Pre-existing findings outside this change: ${input.outOfScopeCount} (see --all)`
+      : "No pre-existing findings outside this change.",
+    ""
+  ];
+  const sorted = [...input.scopedFindings].sort(
+    (left, right) => findingPriority(left) - findingPriority(right)
+  );
+  if (sorted.length === 0) {
+    lines.push("No in-scope findings for this change.");
+  } else {
+    lines.push("In-scope findings:");
+    for (const finding of sorted.slice(0, 10)) {
+      lines.push(
+        `- [${finding.severity}/${finding.status}] ${singleLine(finding.title)} (${finding.ruleId})`
+      );
+    }
+  }
+  lines.push(
+    "",
+    `Packet: ${input.packetSize.bytes} B, ~${input.packetSize.estimatedTokens} tokens (${input.packetSize.estimator} estimate).`,
+    `Handing the agent the changed files instead: ${input.baselines.changedFiles.bytes} B, ~${input.baselines.changedFiles.estimatedTokens} tokens.`,
+    `Input reduction: ${reduction}%.`
+  );
+  return `${lines.join("\n")}\n`;
+}

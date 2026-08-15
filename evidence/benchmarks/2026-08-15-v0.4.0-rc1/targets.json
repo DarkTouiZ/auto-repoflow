@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "generatedOn": "2026-08-15",
+  "tool": {
+    "name": "auto-repoflow",
+    "version": "0.4.0",
+    "revision": "e80aa78d7ce7ca3de5b5dbd79bc16773c366f642"
+  },
+  "protocol": {
+    "runsPerTarget": 3,
+    "ai": "off",
+    "generatedEvidence": "none",
+    "pristinePinnedCheckouts": true
+  },
+  "targets": [
+    {
+      "label": "milemesh-synthetic-v040-rc1",
+      "revision": "2bd997e88dd252472e20a01dc18768f4989fc31a",
+      "source": "local synthetic benchmark repository",
+      "license": "MIT",
+      "scoredLedger": true
+    },
+    {
+      "label": "p-limit-public-v040-rc1",
+      "revision": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+      "source": "https://github.com/sindresorhus/p-limit",
+      "license": "MIT",
+      "scoredLedger": false
+    },
+    {
+      "label": "clsx-public-v040-rc1",
+      "revision": "925494cf31bcd97d3337aacd34e659e80cae7fe2",
+      "source": "https://github.com/lukeed/clsx",
+      "license": "MIT",
+      "scoredLedger": false
+    }
+  ],
+  "privacyReview": {
+    "absoluteSourcePathsRemoved": true,
+    "aggregateOnly": true,
+    "completed": true
+  }
+}
+
+

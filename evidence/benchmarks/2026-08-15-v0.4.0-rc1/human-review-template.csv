@@ -1,0 +1,7 @@
+reviewer_id,target_id,condition_order,session_started_at,session_ended_at,decision,accepted_findings,rejected_findings,missed_findings,confidence_1_to_5,notes_redacted
+R01,T01,A_then_B,,,,,,,,,
+R01,T02,B_then_A,,,,,,,,,
+R02,T01,B_then_A,,,,,,,,,
+R02,T02,A_then_B,,,,,,,,,
+
+
