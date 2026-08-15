@@ -4,8 +4,9 @@
 
 Auto-RepoFlow turns repository evidence into an actionable review and a
 portable Agent Fix Packet. Version 0.3 can also isolate and verify one test-gap
-patch from an existing IDE agent. It does not invoke that agent, push, open a
-pull request, merge, deploy, or publish code.
+patch from an existing IDE agent. The 0.4 source candidate adds read-only,
+diff-scoped review of what that agent changed. It does not invoke that agent,
+push, open a pull request, merge, deploy, or publish code.
 
 ## Version 0.1.0 scope
 
@@ -121,6 +122,23 @@ source egress, original-checkout mutation, or aggregate-summary privacy leak.
 The release checklist, GitHub Release, OIDC publication, provenance
 verification, and isolated `npx auto-repoflow@0.3.0 --version` smoke test
 completed on 2026-08-06.
+
+## Version 0.4.0 release candidate
+
+- add `review` for worktree, staged, and merge-base scopes, including untracked
+  files and bounded Agent Markdown handoff packets;
+- add optional LCOV/Istanbul evidence for added lines and changed files missing
+  from a fresh coverage report;
+- detect new untested endpoints and resolve namespace controller handlers;
+- remove temporary base-source snapshots after every review;
+- require an explicit pristine MileMesh target during release benchmark
+  validation instead of accepting a skipped gate.
+
+The Review Packet remains schema v1 and scan/report compatibility remains
+schema v2 with `--compat v1`. Release evidence must include the full CI matrix,
+package smoke, a pristine 22-finding MileMesh gate, and privacy review. Until a
+maintainer creates `v0.4.0`, npm `latest` remains `0.3.0`; no publication or
+provenance claim may be made for 0.4.0.
 
 ## Future release checklist
 

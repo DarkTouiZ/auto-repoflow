@@ -229,7 +229,7 @@ test("GET /api/deliveries", () => {
   cli(["change", "cleanup", "--id", started.changeId, "--confirm"]);
 
   const version = cli(["--version"]);
-  if (version !== "0.3.0") {
+  if (version !== "0.4.0") {
     throw new Error(`Packed CLI returned unexpected version ${version}`);
   }
   console.log(`PASS packed auto-repoflow ${version} on ${process.version}`);

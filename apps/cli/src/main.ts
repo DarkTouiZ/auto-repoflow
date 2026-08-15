@@ -47,7 +47,7 @@ import {
 } from "@auto-repoflow/evaluator";
 import type { AiProviderName, AiRequestMode } from "@auto-repoflow/domain";
 
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const scanFormats = ["human", "json", "agent-md", "agent-json"] as const;
 type ScanFormat = (typeof scanFormats)[number];
 

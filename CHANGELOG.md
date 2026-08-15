@@ -5,6 +5,30 @@ project follows semantic versioning.
 
 ## [Unreleased]
 
+### Added
+
+- Added `auto-repoflow review` for diff-scoped review of worktree, staged, or
+  merge-base changes, with bounded human/JSON/Agent Markdown packets.
+- Added optional LCOV/Istanbul ingestion for added-line execution evidence,
+  fresh-report checks for changed source missing from coverage, and explicit
+  stale-coverage findings.
+- Added new-endpoint test detection, JavaScript/TypeScript handler resolution,
+  golden fixtures, token-size baselines, and a required external benchmark mode.
+
+### Changed
+
+- Worktree and base review now include untracked files in changed-file scope,
+  added-line ranges, and diff-size baselines.
+- OpenAPI requirements participate in draft API readiness while synthetic
+  approval statuses are accepted only inside the trusted benchmark process.
+
+### Security
+
+- Temporary base-revision source snapshots are removed in a `finally` block on
+  both successful and failed reviews.
+- Review remains read-only: it does not run tests, invoke an agent, push, open a
+  pull request, merge, deploy, or publish.
+
 ## [0.3.0] - 2026-08-06
 
 ### Added

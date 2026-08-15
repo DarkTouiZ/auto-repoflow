@@ -17,11 +17,33 @@ npx auto-repoflow scan .
 npx auto-repoflow scan . --format agent-md --out fix-packet.md
 ```
 
+The npm `latest` release remains `0.3.0` while the source checkout prepares
+`0.4.0`.
+
 The default demo is a hash-pinned deterministic replay on the bundled MIT
 MileMesh Lite fixture. It is explicitly not live-AI or AI-quality evidence.
 It runs a real scan/worktree/verification/rescan flow and should show the target
 finding `1 -> 0`, test linkage `50% -> 100%`, passing checks, and an unchanged
 original fixture. Handoff mode stops for the user to open an IDE agent.
+
+## Diff-scoped review (0.4 source candidate)
+
+Review uncommitted work by default, staged work only, or a branch relative to
+its merge base. Untracked files are included in worktree/base scopes.
+
+```bash
+auto-repoflow review .
+auto-repoflow review . --staged
+auto-repoflow review . --base main
+auto-repoflow review . \
+  --coverage coverage/lcov.info \
+  --format agent-md --top 10 --max-bytes 12000
+```
+
+Coverage may be LCOV or Istanbul `coverage-final.json`. A stale report produces
+an informational finding rather than a false pass. A fresh report produces a
+high-severity failure when changed source is missing or added lines have zero
+hits. Review never runs repository commands or tests itself.
 
 ## Verified local ChangeRun
 
@@ -139,7 +161,7 @@ scans remove the raw snapshot unless `--keep-snapshot` is set. Always review
 packets before sharing because relative engineering metadata can be sensitive.
 
 Formats: `human`, `json`, `agent-md`, `agent-json`. Schema v2 is the default;
-`--compat v1` keeps the legacy packet contract in v0.3.
+`--compat v1` keeps the legacy packet contract in v0.4.
 
 Run `auto-repoflow help` for every command and option.
 
