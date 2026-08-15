@@ -178,6 +178,16 @@ change:
     throw new Error(`Packed guided demo returned unexpected output\n${demo}`);
   }
 
+  const review = cli(["review", fixture, "--format", "json"]);
+  const reviewPacket = JSON.parse(review);
+  if (
+    reviewPacket.kind !== "auto-repoflow-review-packet" ||
+    reviewPacket.schemaVersion !== 1 ||
+    typeof reviewPacket.metrics?.packet?.bytes !== "number"
+  ) {
+    throw new Error(`Packed CLI review returned unexpected output\n${review}`);
+  }
+
   const started = JSON.parse(
     cli([
       "change",

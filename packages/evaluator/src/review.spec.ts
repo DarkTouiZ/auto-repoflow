@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, mkdir, writeFile, appendFile } from "node:fs/promises";
+import { appendFile, mkdtemp, mkdir, readdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -8,8 +8,11 @@ import { reviewRepository } from "./review.js";
 import { EvaluationService } from "./service.js";
 
 const previousHome = process.env.HOME;
+const previousTmpdir = process.env.TMPDIR;
 afterEach(() => {
   process.env.HOME = previousHome;
+  if (previousTmpdir === undefined) delete process.env.TMPDIR;
+  else process.env.TMPDIR = previousTmpdir;
 });
 
 function git(cwd: string, args: string[]): void {
@@ -99,6 +102,45 @@ describe("review command", () => {
         (f) => f.ruleId === "ARF-CHANGE-UNTESTED-001"
       )
     ).toBe(false);
+  });
+
+  it("flags a newly added endpoint with no test, not a pre-existing one", async () => {
+    const root = await repo({
+      "src/orders.ts":
+        'const router = x;\nrouter.get("/api/orders", (req, res) => { res.json([]); });\n'
+    });
+    await appendFile(
+      join(root, "src/orders.ts"),
+      'router.post("/api/orders", (req, res) => { res.json({}); });\n'
+    );
+    const result = await reviewRepository(new EvaluationService(), root, {
+      scope: "worktree"
+    });
+    const newEndpoint = result.scopedFindings.filter(
+      (f) => f.ruleId === "ARF-CHANGE-TEST-001"
+    );
+    expect(newEndpoint).toHaveLength(1);
+    expect(newEndpoint[0].title).toContain("POST /api/orders");
+  });
+
+  it("removes the temporary base-source snapshot after review", async () => {
+    const root = await repo({
+      "src/orders.ts":
+        'const router = x;\nrouter.get("/api/orders", (req, res) => { res.json([]); });\n'
+    });
+    await appendFile(
+      join(root, "src/orders.ts"),
+      'router.post("/api/orders", (req, res) => { res.json({}); });\n'
+    );
+    const controlledTmp = await mkdtemp(join(tmpdir(), "arf-review-tmp-root-"));
+    process.env.TMPDIR = controlledTmp;
+
+    await reviewRepository(new EvaluationService(), root, {
+      scope: "worktree"
+    });
+
+    expect((await readdir(controlledTmp)).filter((name) => name.startsWith("arf-base-")))
+      .toEqual([]);
   });
 
   it("resolves a base ref via merge-base", async () => {

@@ -5,7 +5,8 @@
 // The MileMesh ledger lives in a separate checkout (github.com/DarkTouiZ/
 // milemesh-mock) and is not part of this repository, so this gate cannot run in
 // CI without an explicit --target. When --target is omitted it SKIPs loudly
-// (exit 0) so it can sit inside `npm run check` without breaking the build.
+// by default so it can sit inside `npm run check`; release validation passes
+// --require-target so an accidental SKIP becomes a hard failure.
 //
 // When a target is supplied it runs the standard rules-only benchmark and fails
 // unless precision === 100, recall === 100, and detected === EXPECTED_FINDINGS.
@@ -16,7 +17,7 @@
 //   node scripts/benchmark-gate.mjs \
 //     --target /path/to/milemesh-mock \
 //     --ledger /path/to/milemesh-mock/benchmark/expected-findings.json \
-//     [--label milemesh] [--runs 3]
+//     [--label milemesh] [--runs 3] [--require-target]
 
 import { resolve } from "node:path";
 import { runScanBenchmark } from "./benchmark-scan-lib.mjs";
@@ -44,6 +45,11 @@ async function main() {
   const flags = parseFlags(process.argv.slice(2));
 
   if (!flags.has("target")) {
+    if (flags.has("require-target")) {
+      throw new Error(
+        "benchmark-gate requires --target and --ledger in required mode"
+      );
+    }
     console.log(
       "SKIP benchmark-gate: no --target supplied (external MileMesh checkout not present)."
     );

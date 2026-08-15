@@ -18,6 +18,7 @@
     "doctor": "node scripts/doctor.mjs",
     "benchmark:scan": "node scripts/benchmark-scan.mjs",
     "benchmark:gate": "node scripts/benchmark-gate.mjs",
+    "benchmark:gate:required": "node scripts/benchmark-gate.mjs --require-target",
     "package:smoke": "node scripts/package-smoke.mjs",
     "review:summarize": "node scripts/summarize-human-review.mjs",
     "privacy:check": "node scripts/privacy-check.mjs",

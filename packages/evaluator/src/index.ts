@@ -15,6 +15,7 @@ export * from "./change.js";
 export * from "./jsscan.js";
 export * from "./gitdiff.js";
 export * from "./tokens.js";
+export * from "./coverage.js";
 export * from "./review.js";
 export * from "./fixtures.js";
 export * from "./trial.js";

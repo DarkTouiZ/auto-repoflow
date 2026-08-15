@@ -215,19 +215,19 @@ export const GOLDEN_FIXTURES: GoldenFixture[] = [
   {
     name: "nestjs-openapi",
     files: NESTJS_OPENAPI,
-    // FIXED (Phase 4, partial): NestJS routes now participate in coverage and
-    // route rules, so the endpoint's missing test is reported (ARF-TEST-001)
-    // instead of the dangerous "0% coverage, 0 test gaps" output. The OpenAPI
-    // requirement is still not linked (api-spec=0/1) — widening the requirement
-    // source set is deferred until the external MileMesh gate can validate it.
+    // FIXED (Phase 4): NestJS routes participate in coverage and route rules,
+    // and the OpenAPI spec is now recognised as a draft requirement
+    // (ARF-API-DRAFT-001, api-spec-readiness=1/1) instead of being discarded.
+    // The endpoint's missing test is still reported (ARF-TEST-001). Validated
+    // against the external MileMesh gate (still 22/22, 100/100).
     expectedRuleIds: [
-      "ARF-API-001",
+      "ARF-API-DRAFT-001",
       "ARF-CI-001",
       "ARF-QUALITY-002",
       "ARF-TEST-001"
     ],
     expectedCoverage: [
-      "api-spec-readiness=0/1",
+      "api-spec-readiness=1/1",
       "api-spec=0/1",
       "implementation=1/1",
       "test-plan=0/1",

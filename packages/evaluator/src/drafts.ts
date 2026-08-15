@@ -9,6 +9,7 @@ import {
 import { basename, extname, join, relative, sep } from "node:path";
 import type { EvaluationReport } from "@auto-repoflow/domain";
 import type { ProviderEvidenceDraftSeed } from "./ai.js";
+import { approvedReviewStatusSet } from "./evaluate.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import {
@@ -240,9 +241,7 @@ export async function generatePrivateEvidenceDrafts(input: {
   const hasReviewedDesign = input.report.nodes.some(
     (item) =>
       item.kind === "SCREEN" &&
-      ["human_reviewed", "approved_for_synthetic_benchmark"].includes(
-        String(item.attributes?.reviewStatus ?? "")
-      )
+      approvedReviewStatusSet().has(String(item.attributes?.reviewStatus ?? ""))
   );
   const hasTestPlan = input.report.nodes.some(
     (item) => item.attributes?.source === "test-plan"

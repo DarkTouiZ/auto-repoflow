@@ -89,15 +89,19 @@ function lineAt(text: string, index: number): number {
 }
 
 function normalizeApiPath(value: string): string {
-  return value
-    .replace(/^\{\{[^}]+\}\}/, "")
-    .replace(/^https?:\/\/[^/]+/i, "")
-    .replace(/\{\{[^}]+\}\}/g, ":param")
-    .replace(/:[A-Za-z_][\w-]*/g, ":param")
-    .replace(/\{[^}]+\}/g, ":param")
-    .split(/[?#]/, 1)[0]
-    .replace(/\/+/g, "/")
-    .replace(/\/$/, "") || "/";
+  return (
+    value
+      .replace(/^\{\{[^}]+\}\}/, "")
+      .replace(/^https?:\/\/[^/]+/i, "")
+      .replace(/\{\{[^}]+\}\}/g, ":param")
+      .replace(/:[A-Za-z_][\w-]*/g, ":param")
+      .replace(/\{[^}]+\}/g, ":param")
+      .split(/[?#]/, 1)[0]
+      .replace(/\/+/g, "/")
+      .replace(/\/$/, "")
+      // Case-insensitive path matching: /API/Users and /api/users are one route.
+      .toLowerCase() || "/"
+  );
 }
 
 // Receivers that are HTTP clients making outbound calls, not route registrars.
@@ -125,12 +129,35 @@ function isRouteRegistration(receiver: string, rawPath: string): boolean {
   return /(?:^app$|router$)/i.test(receiver);
 }
 
+// Classify a route's handler argument. An inline function/arrow is a genuine
+// (anonymous) implementation; a bare identifier must resolve to a real symbol
+// elsewhere, otherwise the route is unimplemented.
+function classifyRouteHandler(
+  maskedText: string,
+  callParenIndex: number
+): { kind: "inline" | "identifier" | "unknown"; name?: string } {
+  const args = callArgs(maskedText, callParenIndex);
+  if (args.length < 2) return { kind: "unknown" };
+  const [start, end] = args[args.length - 1];
+  const handler = maskedText.slice(start, end).trim();
+  if (/=>|\bfunction\b/.test(handler)) return { kind: "inline" };
+  const identifier = handler.match(
+    /^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*)$/
+  );
+  if (identifier) {
+    const segments = identifier[1].split(".");
+    return { kind: "identifier", name: segments[segments.length - 1] };
+  }
+  return { kind: "unknown" };
+}
+
 function extractRoutes(
   text: string,
   file: SnapshotFile,
   nodes: ArtifactNode[],
   routePaths: Map<string, string>,
-  mask: Uint8Array
+  mask: Uint8Array,
+  maskedText: string
 ): void {
   const routeRegex =
     /\b([A-Za-z_$][\w$]*)\.(get|post|put|patch|delete)\s*\(\s*["'`]([^"'`]+)["'`]/gi;
@@ -141,27 +168,41 @@ function extractRoutes(
     const method = match[2].toUpperCase();
     const path = normalizeApiPath(match[3]);
     const locator = `${method} ${path}`;
+    const line = lineAt(text, match.index ?? 0);
     routePaths.set(locator, stableId("API_OPERATION", locator));
+
+    const callParen = maskedText.indexOf("(", match.index ?? 0);
+    const handler = classifyRouteHandler(maskedText, callParen);
+
+    const routeAttributes: Record<string, string | number | boolean> = {
+      source: "express-route",
+      method,
+      path,
+      router
+    };
+    if (handler.kind === "identifier" && handler.name) {
+      routeAttributes.handler = handler.name;
+    }
     nodes.push(
-      node(
-        "API_OPERATION",
-        locator,
-        locator,
-        file,
-        lineAt(text, match.index ?? 0),
-        { source: "express-route", method, path, router }
-      )
+      node("API_OPERATION", locator, locator, file, line, routeAttributes)
     );
-    nodes.push(
-      node(
-        "CODE_SYMBOL",
-        `${locator} route handler`,
-        `route-handler:${locator}`,
-        file,
-        lineAt(text, match.index ?? 0),
-        { source: "route-registration", operation: locator, router }
-      )
-    );
+
+    if (handler.kind === "inline" || handler.kind === "unknown") {
+      // An inline handler is a real (anonymous) implementation evidenced at the
+      // registration site. An unknown shape keeps the same benefit of the doubt.
+      nodes.push(
+        node(
+          "CODE_SYMBOL",
+          `${locator} route handler`,
+          `route-handler:${locator}`,
+          file,
+          line,
+          { source: "route-inline-handler", operation: locator, router }
+        )
+      );
+    }
+    // For a bare-identifier handler, no synthetic symbol is emitted: the real
+    // symbol (from extractCodeSymbols) must resolve by name, else ARF-CODE-001.
   }
 }
 
@@ -953,9 +994,10 @@ export async function extractArtifacts(
     );
     if (CODE_EXTENSIONS.includes(extension)) {
       const mask = computeCodeMask(text);
+      const masked = maskNonCode(text);
       const isTestFile = TEST_FILE_PATTERN.test(file.relativePath);
       extractMounts(text, mounts, mask);
-      extractRoutes(text, file, nodes, routePaths, mask);
+      extractRoutes(text, file, nodes, routePaths, mask, masked);
       extractNestRoutes(text, file, nodes, routePaths, mask);
       // A backend/server file that registers routes should not have its
       // outbound HTTP client calls (e.g. axios to a third-party API) treated as
@@ -970,7 +1012,7 @@ export async function extractArtifacts(
       }
       extractCodeSymbols(text, file, nodes);
       if (isTestFile) {
-        extractTests(text, file, nodes, mask, maskNonCode(text));
+        extractTests(text, file, nodes, mask, masked);
       }
     }
     if (extension === ".json") {

@@ -443,6 +443,7 @@ async function runReview(args: string[]): Promise<void> {
         "  (default)         uncommitted work (worktree + staged + untracked) vs HEAD",
         "  --staged          only staged changes vs HEAD",
         "  --base <ref>      merge-base(<ref>, HEAD)..worktree",
+        "  --coverage <file> lcov.info or coverage-final.json (auto-discovered)",
         "  --format          human (default) | json | agent-md",
         "  --top <n>         max findings in the packet (default 10)",
         "  --severity <min>  info|low|medium|high minimum severity",
@@ -473,7 +474,8 @@ async function runReview(args: string[]): Promise<void> {
   const result = await reviewRepository(new EvaluationService(), sourcePath, {
     scope,
     baseRef,
-    projectName: optionalFlag(flags, "project")
+    projectName: optionalFlag(flags, "project"),
+    coveragePath: optionalFlag(flags, "coverage")
   });
 
   const top = optionalFlag(flags, "top");

@@ -82,6 +82,63 @@ function parseNameStatus(text: string): ChangedFile[] {
   return files;
 }
 
+async function untrackedPaths(root: string): Promise<string[]> {
+  return (
+    await gitOrThrow(root, ["ls-files", "--others", "--exclude-standard"])
+  )
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+async function untrackedPatch(
+  root: string,
+  path: string,
+  unified: number | null
+): Promise<string> {
+  const args = ["diff", "--no-index", "--no-color"];
+  if (unified !== null) args.push(`--unified=${unified}`);
+  args.push("--", "/dev/null", path);
+  const result = await git(root, args);
+  // git diff --no-index uses exit code 1 when a diff was produced.
+  if (result.exitCode !== 0 && result.exitCode !== 1) {
+    throw new Error(
+      `git ${args.join(" ")} failed: ${(result.stderr || result.stdout).trim()}`
+    );
+  }
+  return result.stdout;
+}
+
+async function diffIncludingUntracked(
+  changeSet: ChangeSet,
+  options: ChangeSetOptions,
+  unified: number | null
+): Promise<string> {
+  const { root } = changeSet;
+  const args = ["diff", "--no-color"];
+  if (unified !== null) args.push(`--unified=${unified}`);
+  if (options.scope === "staged") {
+    args.push("--cached");
+  } else if (options.scope === "base") {
+    args.push(changeSet.baseRef);
+  } else {
+    args.push("HEAD");
+  }
+
+  let text = await gitOrThrow(root, args);
+  if (options.scope === "staged") return text;
+
+  const changedPaths = new Set(changeSet.files.map((file) => file.path));
+  for (const path of await untrackedPaths(root)) {
+    if (!changedPaths.has(path)) continue;
+    const patch = await untrackedPatch(root, path, unified);
+    if (patch.length > 0) {
+      text += `${text.endsWith("\n") || text.length === 0 ? "" : "\n"}${patch}`;
+    }
+  }
+  return text;
+}
+
 /**
  * Resolve the set of files that changed relative to the chosen baseline. The
  * default (worktree) scope reports uncommitted work — tracked modifications plus
@@ -134,6 +191,9 @@ export async function resolveChangeSet(
         ])
       )
     );
+    for (const path of await untrackedPaths(root)) {
+      files.push({ path, status: "added" });
+    }
   } else {
     // worktree: tracked changes vs HEAD ...
     baseRef = "HEAD";
@@ -143,17 +203,7 @@ export async function resolveChangeSet(
       )
     );
     // ... plus untracked files (not ignored), reported as additions.
-    const untracked = (
-      await gitOrThrow(root, [
-        "ls-files",
-        "--others",
-        "--exclude-standard"
-      ])
-    )
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0);
-    for (const path of untracked) {
+    for (const path of await untrackedPaths(root)) {
       files.push({ path, status: "added" });
     }
   }
@@ -172,18 +222,56 @@ export async function resolveChangeSet(
   };
 }
 
+/**
+ * Added line ranges (new-side) per changed file, from a zero-context diff.
+ * Used to check whether the lines an agent just wrote are exercised by tests.
+ */
+export async function addedLineRanges(
+  changeSet: ChangeSet,
+  options: ChangeSetOptions
+): Promise<Map<string, Array<[number, number]>>> {
+  const text = await diffIncludingUntracked(changeSet, options, 0);
+  const ranges = new Map<string, Array<[number, number]>>();
+  let currentFile: string | null = null;
+  for (const line of text.split("\n")) {
+    const fileMatch = line.match(/^\+\+\+ b\/(.+)$/);
+    if (fileMatch) {
+      currentFile = fileMatch[1];
+      if (!ranges.has(currentFile)) ranges.set(currentFile, []);
+      continue;
+    }
+    const hunk = line.match(/^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/);
+    if (hunk && currentFile) {
+      const start = Number(hunk[1]);
+      const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
+      if (count > 0) {
+        ranges.get(currentFile)!.push([start, start + count - 1]);
+      }
+    }
+  }
+  return ranges;
+}
+
+/**
+ * Contents of a file at the change set's base revision, or null when the file
+ * did not exist there (e.g. a newly added file).
+ */
+export async function showBaseFile(
+  changeSet: ChangeSet,
+  path: string
+): Promise<string | null> {
+  const result = await git(changeSet.root, [
+    "show",
+    `${changeSet.baseRef}:${path}`
+  ]);
+  if (result.exitCode !== 0) return null;
+  return result.stdout;
+}
+
 /** Unified diff text for the change set, used to size the token baseline. */
 export async function changeSetDiff(
   changeSet: ChangeSet,
   options: ChangeSetOptions
 ): Promise<string> {
-  const { root } = changeSet;
-  if (options.scope === "staged") {
-    return gitOrThrow(root, ["diff", "--cached"]);
-  }
-  if (options.scope === "base") {
-    return gitOrThrow(root, ["diff", changeSet.baseRef]);
-  }
-  // worktree: tracked diff (untracked files are not part of `git diff`).
-  return gitOrThrow(root, ["diff", "HEAD"]);
+  return diffIncludingUntracked(changeSet, options, null);
 }

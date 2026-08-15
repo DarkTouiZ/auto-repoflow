@@ -101,6 +101,54 @@ describe("test-quality rules (Phase 2)", () => {
     expect(testCoverage).toMatchObject({ covered: 0, total: 1 });
   });
 
+  it("flags a route whose bare-identifier handler does not resolve", async () => {
+    const r = await report({
+      "routes.ts": 'router.get("/api/orders", missingHandler);'
+    });
+    expect(ruleIds(r)).toContain("ARF-CODE-001");
+    const impl = r.coverage.find((c) => c.id === "implementation");
+    expect(impl).toMatchObject({ covered: 0, total: 1 });
+  });
+
+  it("counts an inline handler as implementation (no ARF-CODE-001)", async () => {
+    const r = await report({
+      "routes.ts": 'router.get("/api/orders", (req, res) => { res.json([]); });'
+    });
+    expect(ruleIds(r)).not.toContain("ARF-CODE-001");
+    const impl = r.coverage.find((c) => c.id === "implementation");
+    expect(impl).toMatchObject({ covered: 1, total: 1 });
+  });
+
+  it("resolves a named handler defined in the same file", async () => {
+    const r = await report({
+      "routes.ts":
+        'router.get("/api/orders", listOrders);\nexport function listOrders() { return []; }'
+    });
+    expect(ruleIds(r)).not.toContain("ARF-CODE-001");
+  });
+
+  it("resolves a namespace controller member to its exported handler", async () => {
+    const r = await report({
+      "routes.ts":
+        'router.get("/api/orders", ordersController.listOrders);',
+      "orders-controller.ts":
+        "export function listOrders() { return []; }"
+    });
+    expect(ruleIds(r)).not.toContain("ARF-CODE-001");
+    const impl = r.coverage.find((c) => c.id === "implementation");
+    expect(impl).toMatchObject({ covered: 1, total: 1 });
+  });
+
+  it("uses the final handler after route middleware", async () => {
+    const r = await report({
+      "routes.ts":
+        'router.get("/api/orders", requireAuth, ordersController.listOrders);',
+      "orders-controller.ts":
+        "export function listOrders() { return []; }"
+    });
+    expect(ruleIds(r)).not.toContain("ARF-CODE-001");
+  });
+
   it("severity ranks untested endpoint above missing lint script", async () => {
     const r = await report({
       "routes.ts": 'router.get("/api/orders", listOrders);',

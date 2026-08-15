@@ -154,13 +154,28 @@ function apiOperationMatch(
     matchingSuffix += 1;
   }
   const shorterLength = Math.min(routeParts.length, requirementParts.length);
-  if (matchingSuffix === shorterLength) return 0.85;
+  // Require the whole shorter path to be a suffix of the longer AND at least two
+  // matching segments. A single shared final segment (e.g. spec "/orders"
+  // matching route "/api/v1/admin/orders") is too weak to assert a link.
+  if (matchingSuffix === shorterLength && matchingSuffix >= 2) return 0.85;
   return 0;
 }
 
 function isDraftReviewStatus(value: unknown): boolean {
   const status = String(value ?? "").toLowerCase();
   return status.startsWith("draft") || status.includes("requires_review");
+}
+
+// Review statuses that count as human approval. `approved_for_synthetic_benchmark`
+// is a privileged status only honored when ARF_ALLOW_SYNTHETIC_APPROVAL=1, which
+// the benchmark runner sets. Otherwise any repo could write that string into a
+// design-flow.yaml to silence ARF-DESIGN-001 — a finding-suppression hole.
+export function approvedReviewStatusSet(): Set<string> {
+  const set = new Set(["human_reviewed"]);
+  if (process.env.ARF_ALLOW_SYNTHETIC_APPROVAL === "1") {
+    set.add("approved_for_synthetic_benchmark");
+  }
+  return set;
 }
 
 export function buildEvaluationReport(input: {
@@ -184,9 +199,15 @@ export function buildEvaluationReport(input: {
       item.kind === "API_OPERATION" &&
       IMPLEMENTED_ROUTE_SOURCES.has(String(item.attributes?.source))
   );
+  // Requirement sources that feed API-spec matching. OpenAPI requirements were
+  // previously extracted but discarded; they carry a draft review status so
+  // they land in the non-exploding draft path (ARF-API-DRAFT-*), giving
+  // OpenAPI-only repos spec coverage without a Postman collection.
+  const SPEC_REQUIREMENT_SOURCES = new Set(["postman", "openapi"]);
   const allRequirements = nodes.filter(
     (item) =>
-      item.kind === "REQUIREMENT" && item.attributes?.source === "postman"
+      item.kind === "REQUIREMENT" &&
+      SPEC_REQUIREMENT_SOURCES.has(String(item.attributes?.source))
   );
   const inScope = (item: ArtifactNode): boolean => {
     if (!input.scopePrefix) return true;
@@ -243,10 +264,7 @@ export function buildEvaluationReport(input: {
   let actionsWithApi = 0;
   const screens = nodes.filter((item) => item.kind === "SCREEN");
   const states = nodes.filter((item) => item.kind === "UI_STATE");
-  const approvedReviewStatuses = new Set([
-    "human_reviewed",
-    "approved_for_synthetic_benchmark"
-  ]);
+  const approvedReviewStatuses = approvedReviewStatusSet();
   const draftScreens = screens.filter(
     (screen) =>
       !approvedReviewStatuses.has(String(screen.attributes?.reviewStatus ?? ""))
@@ -442,13 +460,16 @@ export function buildEvaluationReport(input: {
       }
     }
 
+    const handlerName = String(route.attributes?.handler ?? "");
     const implementation = symbols
       .map((symbol) => ({
         symbol,
         score:
           symbol.attributes?.operation === route.locator
             ? 1
-            : overlap(route.locator, symbol.locator)
+            : handlerName && symbol.name === handlerName
+              ? 1
+              : overlap(route.locator, symbol.locator)
       }))
       .sort((a, b) => b.score - a.score)[0];
     if (implementation && implementation.score > 0) {
@@ -850,7 +871,7 @@ export function buildEvaluationReport(input: {
     (summary, item) => {
       const source = String(item.attributes?.source ?? "");
       const reviewStatus = String(item.attributes?.reviewStatus ?? "");
-      if (["human_reviewed", "approved_for_synthetic_benchmark"].includes(reviewStatus)) {
+      if (approvedReviewStatusSet().has(reviewStatus)) {
         summary.reviewed += 1;
       } else if (source.startsWith("generated-")) {
         summary.generated += 1;
